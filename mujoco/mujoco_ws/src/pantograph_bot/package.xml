@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>pantograph_bot</name>
+  <version>0.0.0</version>
+  <description>MuJoCo Pantograph Bot ROS 2 Package</description>
+  <maintainer email="trampasleuteris@gmail.com">Τράμπας Ελευθέριος</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

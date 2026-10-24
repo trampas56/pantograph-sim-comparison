@@ -1,0 +1,6 @@
+<?xml version="1.0" ?>
+<robot name="five_bar_mechanism">
+    <webots>
+        <plugin type="pantograph_pkg.pantograph_torque_driver.PantographTorqueDriver" />
+    </webots>
+</robot>

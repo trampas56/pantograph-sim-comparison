@@ -1,0 +1,190 @@
+#VRML_SIM R2025a utf8
+
+WorldInfo {
+  basicTimeStep 16
+}
+Viewpoint {
+  orientation 0.25 0.06 -0.96 3.65
+  position 0.25 -0.15 0.35
+}
+Background {
+  skyColor [
+    0.4 0.6 0.8
+  ]
+}
+DirectionalLight {
+  ambientIntensity 1
+  direction -1 -1 -2
+  intensity 0.8
+}
+Robot {
+  name "five_bar_mechanism"
+  controller "<extern>"
+  children [
+    Solid {
+      name "base_link"
+      translation 0 0 0.01
+      physics Physics { mass 0.5 density -1 }
+      children [
+        # Βάση
+        Shape {
+          appearance PBRAppearance { baseColor 0.9 0.9 0.9 roughness 0.5 metalness 0 }
+          geometry Box { size 0.20 0.20 0.005 }
+        }
+        # Αριστερός Κινητήρας (Χρυσό κουτί + Άξονας)
+        Transform {
+          translation 0 0.04 0.03
+          children [ Shape { appearance PBRAppearance { baseColor 0.8 0.6 0.2 roughness 0.4 metalness 0.8 } geometry Box { size 0.03 0.03 0.04 } } ]
+        }
+        Transform {
+          translation 0 0.04 0.06
+          children [ Shape { appearance PBRAppearance { baseColor 0.7 0.7 0.7 roughness 0.5 metalness 0.5 } geometry Cylinder { radius 0.005 height 0.02 } } ]
+        }
+        # Δεξιός Κινητήρας (Χρυσό κουτί + Άξονας)
+        Transform {
+          translation 0 -0.04 0.03
+          children [ Shape { appearance PBRAppearance { baseColor 0.8 0.6 0.2 roughness 0.4 metalness 0.8 } geometry Box { size 0.03 0.03 0.04 } } ]
+        }
+        Transform {
+          translation 0 -0.04 0.06
+          children [ Shape { appearance PBRAppearance { baseColor 0.7 0.7 0.7 roughness 0.5 metalness 0.5 } geometry Cylinder { radius 0.005 height 0.02 } } ]
+        }
+
+        # LEFT CHAIN: crank -> arm
+        HingeJoint {
+          jointParameters HingeJointParameters { anchor 0 0.04 0.054 axis 0 0 1 }
+          device [ 
+            RotationalMotor { name "left_motor_joint" } 
+            PositionSensor { name "left_position_sensor" }
+          ]
+          endPoint Solid {
+            name "left_crank"
+            translation 0 0.04 0.054
+            rotation 0 0 1 1.04719
+            physics Physics { mass 0.03 density -1 }
+            children [
+              Transform {
+                translation 0.04 0 0
+                children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Box { size 0.08 0.025 0.002 } } ]
+              }
+              Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Cylinder { radius 0.0125 height 0.002 } }
+              Transform {
+                translation 0.08 0 0
+                children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Cylinder { radius 0.0125 height 0.002 } } ]
+              }
+
+              HingeJoint {
+                jointParameters HingeJointParameters { anchor 0.08 0 -0.002 axis 0 0 1 }
+                endPoint Solid {
+                  name "left_arm"
+                  translation 0.08 0 -0.002
+                  rotation 0 0 1 -2.18819
+                  physics Physics { mass 0.04 density -1 }
+                  children [
+                    Transform {
+                      translation 0.06 0 0
+                      children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Box { size 0.12 0.025 0.002 } } ]
+                    }
+                    Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Cylinder { radius 0.0125 height 0.002 } }
+                    Transform {
+                      translation 0.12 0 0
+                      children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Cylinder { radius 0.0125 height 0.002 } } ]
+                    }
+
+                    HingeJoint {
+                      jointParameters HingeJointParameters { anchor 0.12 0 0 axis 0 0 1 }
+                      endPoint TouchSensor {
+                        name "ee_ft_sensor"
+                        type "force-3d"
+                        lookupTable []
+                        translation 0.12 0 0
+                        rotation 0 0 1 1.141
+                        physics Physics { mass 0.01 density -1 }
+                        boundingObject Sphere { radius 0.015 }
+                        children [
+                          Shape { appearance PBRAppearance { baseColor 1 1 1 roughness 0.5 metalness 0 } geometry Cylinder { radius 0.015 height 0.012 } }
+                          Transform {
+                            translation 0 0 0.005
+                            children [ Shape { appearance PBRAppearance { baseColor 0.9 0.9 0.9 roughness 0.5 metalness 0 } geometry Sphere { radius 0.008 } } ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+
+        # RIGHT CHAIN: crank -> arm
+        HingeJoint {
+          jointParameters HingeJointParameters { anchor 0 -0.04 0.054 axis 0 0 1 }
+          device [ 
+            RotationalMotor { name "right_motor_joint" } 
+            PositionSensor { name "right_position_sensor" }
+          ]
+          endPoint Solid {
+            name "right_crank"
+            translation 0 -0.04 0.054
+            rotation 0 0 1 -1.04719
+            physics Physics { mass 0.03 density -1 }
+            children [
+              Transform {
+                translation 0.04 0 0
+                children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Box { size 0.08 0.025 0.002 } } ]
+              }
+              Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Cylinder { radius 0.0125 height 0.002 } }
+              Transform {
+                translation 0.08 0 0
+                children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Cylinder { radius 0.0125 height 0.002 } } ]
+              }
+
+              HingeJoint {
+                jointParameters HingeJointParameters { anchor 0.08 0 -0.002 axis 0 0 1 }
+                endPoint Solid {
+                  name "right_arm"
+                  translation 0.08 0 -0.002
+                  rotation 0 0 1 2.18819
+                  physics Physics { mass 0.04 density -1 }
+                  children [
+                    Transform {
+                      translation 0.06 0 -0.001
+                      children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Box { size 0.12 0.025 0.002 } } ]
+                    }
+                    Transform {
+                      translation 0 0 -0.001
+                      children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Cylinder { radius 0.0125 height 0.002 } } ]
+                    }
+                    Transform {
+                      translation 0.12 0 -0.001
+                      children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Cylinder { radius 0.0125 height 0.002 } } ]
+                    }
+
+                    # ΚΛΕΙΣΙΜΟ ΒΡΟΧΟΥ
+                    HingeJoint {
+                      jointParameters HingeJointParameters { anchor 0.12 0 0 axis 0 0 1 }
+                      endPoint SolidReference { solidName "ee_ft_sensor" }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+# Ο τοίχος είναι ΕΚΤΟΣ Robot - κανονική σύγκρουση, χωρίς selfCollision
+Solid {
+  name "wall"
+  translation 0.145 0 0.04
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.5 0.5 roughness 0.9 metalness 0.1 }
+      geometry Box { size 0.05 0.20 0.08 }
+    }
+  ]
+  boundingObject Box { size 0.05 0.20 0.08 }
+}

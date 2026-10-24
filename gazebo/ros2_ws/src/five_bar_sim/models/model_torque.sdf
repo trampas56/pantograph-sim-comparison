@@ -1,0 +1,296 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <model name="five_bar_mechanism">
+    <self_collide>false</self_collide>
+
+    <!-- BASE LINK -->
+    <link name="base_link">
+      <pose>0 0 0.01 0 0 0</pose>
+      <inertial>
+        <mass>0.5</mass>
+        <inertia><ixx>0.001</ixx><iyy>0.001</iyy><izz>0.002</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="base_visual">
+        <geometry><box><size>0.20 0.20 0.005</size></box></geometry>
+        <material>
+          <ambient>0.9 0.9 0.9 1.0</ambient>
+          <diffuse>0.9 0.9 0.9 1.0</diffuse>
+          <specular>0.5 0.5 0.5 1</specular>
+        </material>
+      </visual>
+      <visual name="motor_left_gold">
+        <pose>0 0.04 0.03 0 0 0</pose>
+        <geometry><box><size>0.03 0.03 0.04</size></box></geometry>
+        <material><ambient>0.8 0.6 0.2 1</ambient><diffuse>0.8 0.6 0.2 1</diffuse></material>
+      </visual>
+      <visual name="motor_left_shaft">
+        <pose>0 0.04 0.06 0 0 0</pose>
+        <geometry><cylinder><radius>0.005</radius><length>0.02</length></cylinder></geometry>
+        <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material>
+      </visual>
+      <visual name="motor_right_gold">
+        <pose>0 -0.04 0.03 0 0 0</pose>
+        <geometry><box><size>0.03 0.03 0.04</size></box></geometry>
+        <material><ambient>0.8 0.6 0.2 1</ambient><diffuse>0.8 0.6 0.2 1</diffuse></material>
+      </visual>
+      <visual name="motor_right_shaft">
+        <pose>0 -0.04 0.06 0 0 0</pose>
+        <geometry><cylinder><radius>0.005</radius><length>0.02</length></cylinder></geometry>
+        <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material>
+      </visual>
+    </link>
+
+    <joint name="world_joint" type="fixed">
+      <parent>world</parent>
+      <child>base_link</child>
+    </joint>
+
+    <!-- LEFT CHAIN: crank -> arm -->
+    <link name="left_crank">
+      <pose>0 0.04 0.064 0 0 1.04719</pose>
+      <inertial>
+        <pose>0.04 0 0 0 0 0</pose>
+        <mass>0.03</mass>
+        <inertia><ixx>0.00001</ixx><iyy>0.00005</iyy><izz>0.00005</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="visual_box">
+        <pose>0.04 0 0 0 0 0</pose>
+        <geometry><box><size>0.08 0.025 0.002</size></box></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+      <visual name="visual_start_cap">
+        <geometry><cylinder><radius>0.0125</radius><length>0.002</length></cylinder></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+      <visual name="visual_end_cap">
+        <pose>0.08 0 0 0 0 0</pose>
+        <geometry><cylinder><radius>0.0125</radius><length>0.002</length></cylinder></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+    </link>
+
+    <joint name="left_motor_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>left_crank</child>
+      <pose>0 0 0 0 0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <dynamics><damping>0.01</damping><friction>0.01</friction></dynamics>
+      </axis>
+    </joint>
+
+    <link name="left_arm">
+      <pose>0.04 0.10928 0.062 0 0 -1.141</pose>
+      <inertial>
+        <pose>0.06 0 0 0 0 0</pose>
+        <mass>0.04</mass>
+        <inertia><ixx>0.00001</ixx><iyy>0.00008</iyy><izz>0.00008</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="visual_box">
+        <pose>0.06 0 0 0 0 0</pose>
+        <geometry><box><size>0.12 0.025 0.002</size></box></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+      <visual name="visual_start_cap">
+        <geometry><cylinder><radius>0.0125</radius><length>0.002</length></cylinder></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+      <visual name="visual_end_cap">
+        <pose>0.12 0 0 0 0 0</pose>
+        <geometry><cylinder><radius>0.0125</radius><length>0.002</length></cylinder></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+    </link>
+
+    <joint name="left_elbow_joint" type="revolute">
+      <parent>left_crank</parent>
+      <child>left_arm</child>
+      <pose>0 0 0 0 0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <dynamics><damping>0.005</damping><friction>0.005</friction></dynamics>
+      </axis>
+    </joint>
+
+    <!-- END EFFECTOR (ανήκει στο αριστερό δέντρο) -->
+    <link name="end_effector_link">
+      <pose>0.0898 0 0.062 0 0 0</pose>
+      <inertial>
+        <mass>0.01</mass>
+        <inertia><ixx>0.000001</ixx><iyy>0.000001</iyy><izz>0.000001</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="ee_visual">
+        <geometry><cylinder><radius>0.015</radius><length>0.012</length></cylinder></geometry>
+        <material><ambient>1.0 1.0 1.0 1</ambient><diffuse>1.0 1.0 1.0 1</diffuse></material>
+      </visual>
+      <visual name="ee_pin_visual">
+        <pose>0 0 0.005 0 0 0</pose>
+        <geometry><sphere><radius>0.008</radius></sphere></geometry>
+        <material><ambient>0.9 0.9 0.9 1</ambient><diffuse>0.9 0.9 0.9 1</diffuse></material>
+      </visual>
+    </link>
+
+    <!-- end_effector ανήκει μόνο στο αριστερό χέρι (δέντρο χωρίς κύκλους) -->
+    <joint name="ee_left_joint" type="revolute">
+      <parent>left_arm</parent>
+      <child>end_effector_link</child>
+      <pose>0 0 0 0 0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <dynamics><damping>0.001</damping><friction>0.001</friction></dynamics>
+      </axis>
+    </joint>
+
+    <!-- EE TIP + FORCE/TORQUE SENSOR (wrist FT) -->
+    <!-- Ελαφρύ tip με fixed joint, ο FT αισθητήρας -->
+    <!-- μετρά καθαρά τη δύναμη επαφής με τον τοίχο. -->
+    <link name="ee_tip_link">
+      <pose relative_to="end_effector_link">0 0 0 0 0 0</pose>
+      <inertial>
+        <mass>0.02</mass>
+        <inertia><ixx>5e-6</ixx><iyy>5e-6</iyy><izz>5e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <collision name="ee_tip_collision">
+        <geometry><sphere><radius>0.015</radius></sphere></geometry>
+        <surface>
+          <bounce>
+            <restitution_coefficient>0.0</restitution_coefficient>
+            <threshold>100.0</threshold>
+          </bounce>
+          <friction>
+            <ode><mu>0.4</mu><mu2>0.4</mu2></ode>
+          </friction>
+        </surface>
+      </collision>
+    </link>
+
+    <joint name="ee_tip_joint" type="fixed">
+      <parent>end_effector_link</parent>
+      <child>ee_tip_link</child>
+      <sensor name="ee_ft_sensor" type="force_torque">
+        <topic>/ee_ft</topic>
+        <update_rate>200</update_rate>
+        <always_on>1</always_on>
+        <force_torque>
+          <frame>sensor</frame>
+          <measure_direction>parent_to_child</measure_direction>
+        </force_torque>
+      </sensor>
+    </joint>
+
+    <!-- RIGHT CHAIN: crank -> arm -->
+    <link name="right_crank">
+      <pose>0 -0.04 0.064 0 0 -1.04719</pose>
+      <inertial>
+        <pose>0.04 0 0 0 0 0</pose>
+        <mass>0.03</mass>
+        <inertia><ixx>0.00001</ixx><iyy>0.00005</iyy><izz>0.00005</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="visual_box">
+        <pose>0.04 0 0 0 0 0</pose>
+        <geometry><box><size>0.08 0.025 0.002</size></box></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+      <visual name="visual_start_cap">
+        <geometry><cylinder><radius>0.0125</radius><length>0.002</length></cylinder></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+      <visual name="visual_end_cap">
+        <pose>0.08 0 0 0 0 0</pose>
+        <geometry><cylinder><radius>0.0125</radius><length>0.002</length></cylinder></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+    </link>
+
+    <joint name="right_motor_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>right_crank</child>
+      <pose>0 0 0 0 0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <dynamics><damping>0.01</damping><friction>0.01</friction></dynamics>
+      </axis>
+    </joint>
+
+    <link name="right_arm">
+      <pose>0.04 -0.10928 0.062 0 0 1.141</pose>
+      <inertial>
+        <pose>0.06 0 0 0 0 0</pose>
+        <mass>0.04</mass>
+        <inertia><ixx>0.00001</ixx><iyy>0.00008</iyy><izz>0.00008</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="visual_box">
+        <pose>0.06 0 -0.001 0 0 0</pose>
+        <geometry><box><size>0.12 0.025 0.002</size></box></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+      <visual name="visual_start_cap">
+        <pose>0 0 -0.001 0 0 0</pose>
+        <geometry><cylinder><radius>0.0125</radius><length>0.002</length></cylinder></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+      <visual name="visual_end_cap">
+        <pose>0.12 0 -0.001 0 0 0</pose>
+        <geometry><cylinder><radius>0.0125</radius><length>0.002</length></cylinder></geometry>
+        <material><ambient>0.75 0.75 0.75 1.0</ambient><diffuse>0.75 0.75 0.75 1.0</diffuse><specular>0.9 0.9 0.9 1.0</specular></material>
+      </visual>
+    </link>
+
+    <joint name="right_elbow_joint" type="revolute">
+      <parent>right_crank</parent>
+      <child>right_arm</child>
+      <pose>0 0 0 0 0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <dynamics><damping>0.005</damping><friction>0.005</friction></dynamics>
+      </axis>
+    </joint>
+
+    <!-- DETACHABLE JOINT TRICK - Κλείσιμο βρόχου χωρίς tree loop -->
+    <link name="dummy_link">
+      <pose relative_to="right_arm">0.12 0 0 0 0 0</pose>
+      <inertial>
+        <mass>0.001</mass>
+        <inertia><ixx>1e-6</ixx><iyy>1e-6</iyy><izz>1e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+    </link>
+
+    <joint name="loop_closure_joint" type="revolute">
+      <parent>right_arm</parent>
+      <child>dummy_link</child>
+      <pose>0 0 0 0 0 0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <dynamics><damping>0.0</damping><friction>0.0</friction></dynamics>
+      </axis>
+    </joint>
+
+    <plugin filename="gz-sim-detachable-joint-system"
+            name="gz::sim::systems::DetachableJoint">
+      <parent_link>end_effector_link</parent_link>
+      <child_model>my_pantograph</child_model>
+      <child_link>dummy_link</child_link>
+      <attach_topic>/attach_loop</attach_topic>
+      <detach_topic>/detach_loop</detach_topic>
+    </plugin>
+
+    <!-- TORQUE CONTROLLERS (για ForceControl.py) -->
+    <plugin filename="gz-sim-apply-joint-force-system"
+            name="gz::sim::systems::ApplyJointForce">
+      <joint_name>left_motor_joint</joint_name>
+    </plugin>
+
+    <plugin filename="gz-sim-apply-joint-force-system"
+            name="gz::sim::systems::ApplyJointForce">
+      <joint_name>right_motor_joint</joint_name>
+    </plugin>
+
+    <!-- JointStatePublisher για ανάγνωση γωνιών -->
+    <plugin filename="gz-sim-joint-state-publisher-system"
+            name="gz::sim::systems::JointStatePublisher">
+      <joint_name>left_motor_joint</joint_name>
+      <joint_name>right_motor_joint</joint_name>
+    </plugin>
+
+  </model>
+</sdf>

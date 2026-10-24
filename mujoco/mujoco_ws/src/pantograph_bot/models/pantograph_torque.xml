@@ -1,0 +1,77 @@
+<mujoco model="five_bar_mechanism">
+    <compiler angle="radian" coordinate="local" autolimits="true"/>
+    <option gravity="0 0 -9.81" integrator="RK4"/>
+
+    <asset>
+        <material name="mat_base" rgba="0.9 0.9 0.9 1"/>
+        <material name="mat_gold" rgba="0.8 0.6 0.2 1"/>
+        <material name="mat_link" rgba="0.75 0.75 0.75 1" specular="0.9"/>
+        <material name="mat_ee" rgba="1.0 1.0 1.0 1"/>
+    </asset>
+
+    <worldbody>
+        <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+        <geom type="plane" size="1 1 0.1" rgba="0.2 0.2 0.2 1"/>
+        <geom name="wall_geom" type="box" pos="0.145 0 0.05" size="0.025 0.10 0.04" rgba="0.8 0.2 0.2 1"/>
+
+        <body name="base_link" pos="0 0 0.01">
+            <geom type="box" size="0.10 0.10 0.0025" material="mat_base" mass="0.5"/>
+            <geom type="box" pos="0  0.04 0.02" size="0.015 0.015 0.02" material="mat_gold"/>
+            <geom type="cylinder" pos="0  0.04 0.05" size="0.005 0.01" material="mat_base"/>
+            <geom type="box" pos="0 -0.04 0.02" size="0.015 0.015 0.02" material="mat_gold"/>
+            <geom type="cylinder" pos="0 -0.04 0.05" size="0.005 0.01" material="mat_base"/>
+
+            <body name="left_crank" pos="0 0.04 0.054" euler="0 0 1.04719">
+                <joint name="left_motor_joint" type="hinge" axis="0 0 1" damping="0.01" frictionloss="0.01"/>
+                <geom type="box" pos="0.04 0 0" size="0.04 0.0125 0.001" material="mat_link" mass="0.03"/>
+                <geom type="cylinder" pos="0 0 0" size="0.0125 0.001" material="mat_link"/>
+                <geom type="cylinder" pos="0.08 0 0" size="0.0125 0.001" material="mat_link"/>
+
+                <body name="left_arm" pos="0.08 0 -0.002" euler="0 0 -2.18819">
+                    <joint name="left_elbow_joint" type="hinge" axis="0 0 1" damping="0.005" frictionloss="0.005"/>
+                    <geom type="box" pos="0.06 0 0" size="0.06 0.0125 0.001" material="mat_link" mass="0.04"/>
+                    <geom type="cylinder" pos="0 0 0" size="0.0125 0.001" material="mat_link"/>
+                    <geom type="cylinder" pos="0.12 0 0" size="0.0125 0.001" material="mat_link"/>
+
+                    <body name="end_effector_link" pos="0.12 0 0">
+                        <joint name="ee_left_joint" type="hinge" axis="0 0 1" damping="0.001" frictionloss="0.001"/>
+                        <geom name="ee_geom" type="cylinder" size="0.015 0.006" material="mat_ee" mass="0.01"/>
+                        <geom type="sphere" pos="0 0 0.005" size="0.008" material="mat_base"/>
+                        <site name="ee_anchor_site" pos="0 0 0"/>
+                    </body>
+                </body>
+            </body>
+
+            <body name="right_crank" pos="0 -0.04 0.054" euler="0 0 -1.04719">
+                <joint name="right_motor_joint" type="hinge" axis="0 0 1" damping="0.01" frictionloss="0.01"/>
+                <geom type="box" pos="0.04 0 0" size="0.04 0.0125 0.001" material="mat_link" mass="0.03"/>
+                <geom type="cylinder" pos="0 0 0" size="0.0125 0.001" material="mat_link"/>
+                <geom type="cylinder" pos="0.08 0 0" size="0.0125 0.001" material="mat_link"/>
+
+                <body name="right_arm" pos="0.08 0 -0.002" euler="0 0 2.18819">
+                    <joint name="right_elbow_joint" type="hinge" axis="0 0 1" damping="0.005" frictionloss="0.005"/>
+                    <geom type="box" pos="0.06 0 -0.001" size="0.06 0.0125 0.001" material="mat_link" mass="0.04"/>
+                    <geom type="cylinder" pos="0 0 -0.001" size="0.0125 0.001" material="mat_link"/>
+                    <geom type="cylinder" pos="0.12 0 -0.001" size="0.0125 0.001" material="mat_link"/>
+                    <site name="right_tip_site" pos="0.12 0 0"/>
+                </body>
+            </body>
+        </body>
+    </worldbody>
+
+    <contact>
+        <exclude body1="left_crank" body2="right_crank"/>
+        <exclude body1="left_arm" body2="right_arm"/>
+        <exclude body1="right_arm" body2="end_effector_link"/>
+    </contact>
+
+    <equality>
+        <connect site1="ee_anchor_site" site2="right_tip_site"/>
+    </equality>
+
+    <actuator>
+        <motor name="left_motor" joint="left_motor_joint" ctrlrange="-0.1 0.1" ctrllimited="true" gear="1"/>
+        <motor name="right_motor" joint="right_motor_joint" ctrlrange="-0.1 0.1" ctrllimited="true" gear="1"/>
+    </actuator>
+
+</mujoco>

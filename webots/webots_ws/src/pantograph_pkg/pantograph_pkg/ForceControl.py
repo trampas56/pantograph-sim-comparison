@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+# ForceControl.py - Έλεγχος Σταθερής Δύναμης Επαφής (Προσέγγιση Β: φυσικός τοίχος + FT αισθητήρας).
+#
+# Ροή πειράματος:
+#   1) Φάση σταθεροποίησης (t < SETTLE_T): position hold στο Home (impedance X & Y).
+#   2) Φάση δύναμης (t >= SETTLE_T): εφαρμογή ΣΤΑΘΕΡΗΣ δύναμης κατά +X (προς τον τοίχο),
+#      με ομαλή ράμπα. Ο άξονας X είναι σε "force mode" (χωρίς stiffness) ώστε η δύναμη να
+#      οδηγεί το end-effector προς τον τοίχο, ο ΦΥΣΙΚΟΣ τοίχος (collision στο Gazebo) το σταματά.
+#      Ο άξονας Y παραμένει σε position hold (y = 0).
+#
+# Σύγκριση τριών δυνάμεων (καταγράφονται στο CSV):
+#   * F_des    : επιθυμητή δύναμη (setpoint, με ράμπα).
+#   * F_est    : εκτίμηση από εξισώσεις -> F_est = (J_world^T)^-1 * (τ_cmd - τ_friction).
+#   * F_sensor : πραγματική δύναμη από τον Force/Torque αισθητήρα στο end-effector (topic /ee_ft).
+
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Float64
+from sensor_msgs.msg import JointState
+from geometry_msgs.msg import Wrench
+import math
+import os
+import sys
+import time
+import csv
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pantograph_pkg.Kinematics import joint_to_world, joint_to_kin, jacobian_world, HOME_WORLD
+
+
+class PantographForceController(Node):
+    """Ελεγκτής Σταθερής Δύναμης Επαφής για τον Παντογράφο."""
+
+    def __init__(self):
+        super().__init__('pantograph_force_controller')
+
+        self.pub_left = self.create_publisher(
+            Float64, '/left_motor/cmd_force', 10)
+        self.pub_right = self.create_publisher(
+            Float64, '/right_motor/cmd_force', 10)
+
+        self.create_subscription(
+            JointState,
+            '/joint_states',
+            self._joint_state_cb, 10)
+
+        # Πραγματική δύναμη επαφής από τον FT αισθητήρα στο end-effector
+        self.create_subscription(Wrench, '/ee_ft', self._ft_cb, 10)
+
+        # Επιθυμητή Δύναμη Επαφής
+        self.F_DES = 2.0      # N, σταθερή δύναμη προς τον τοίχο (+X). Ασφαλές εντός 0.1 Nm clamp.
+        self.SETTLE_T = 2.0    # s, διάρκεια φάσης σταθεροποίησης στο Home
+        self.RAMP_T = 1.0      # s, ομαλή ράμπα της δύναμης 0 -> F_DES
+
+        # Παράμετροι Εμπέδησης (Stiffness K & Damping D)
+        self.K_x = 50.0        # N/m (μόνο στη φάση σταθεροποίησης)
+        self.K_y = 50.0        # N/m (position hold στον Y σε όλες τις φάσεις)
+        self.D_x = 25.0        # Ns/m (απόσβεση X: ήπια προσέγγιση ~F/D ~ 0.04 m/s & ευστάθεια επαφής)
+        self.D_y = 5.0         # Ns/m
+
+        # Στόχοι (Home) και Όρια
+        self.home_x, self.home_y = HOME_WORLD
+        self.MAX_TORQUE = 0.1  # Ασφαλές όριο ροπής (Nm)
+
+        # Γεωμετρία Τοίχου (για ανίχνευση επαφής) - ΠΡΕΠΕΙ να συμφωνεί με το .wbt
+        # Ο τοίχος είναι Box στο x=0.145 με μισό πλάτος 0.025 -> μπροστινή όψη στο x=0.120.
+        # Η σφαίρα του end-effector έχει ακτίνα 0.015. Επαφή όταν x_ee + r >= όψη τοίχου.
+        self.WALL_FACE_X = 0.120
+        self.EE_RADIUS   = 0.015
+        self.CONTACT_X   = self.WALL_FACE_X - self.EE_RADIUS  # 0.105 m (κέντρο EE στην επαφή)
+
+        # Joint Friction/Damping Feedforward
+        self.b_visc = 0.01   # damping  -> +b*dq
+        self.f_coul = 0.01   # friction -> +f*tanh(dq/v_eps)
+        self.v_eps  = 0.05
+
+        # Φίλτρο Ταχυτήτων (EMA)
+        self.vel_alpha = 0.8
+        self.dq_left_f = 0.0
+        self.dq_right_f = 0.0
+
+        # Φίλτρο σήματος αισθητήρα (EMA)
+        # SENSOR_SIGN: ευθυγράμμιση προσήμου ώστε η δύναμη επαφής (προς τον τοίχο) να είναι θετική.
+        # Επιβεβαιώνεται κατά το verification, flip σε -1.0 αν χρειαστεί.
+        self.SENSOR_SIGN = 1.0
+        self.ft_alpha = 0.7
+        self.f_sensor_x = 0.0
+        self.f_sensor_y = 0.0
+
+        # Κατάσταση Ρομπότ
+        self.q_left = 0.0
+        self.q_right = 0.0
+        self.dq_left = 0.0
+        self.dq_right = 0.0
+        self.received_feedback = False
+
+        # Χρονισμός
+        self.start_time = time.time()
+        self.t0 = None
+        self.dt = 0.01  # 100 Hz
+        self.timer = self.create_timer(self.dt, self._control_loop)
+
+        # Logging
+        # Ανοίγουμε το αρχείο εξαρχής για να γράφουμε ζωντανά!
+        self.log_filename = os.path.join(
+            os.path.expanduser('~'), 'Desktop', 'pantograph', 'webots',
+            'webots_force_log.csv'
+        )
+        self.log_file = open(self.log_filename, 'w', newline='')
+        self.csv_writer = csv.writer(self.log_file)
+        self.csv_writer.writerow([
+            't', 'x_ee', 'y_ee', 'v_x', 'v_y',
+            'f_des_x', 'f_des_y', 'f_cmd_x', 'f_cmd_y',
+            'f_est_x', 'f_est_y',
+            'f_sensor_x', 'f_sensor_y',
+            'f_contact_x', 'f_contact_y',
+            'tau_left', 'tau_right'
+        ])
+        self.log_counter = 0
+
+        self.get_logger().info(
+            f'Force Controller (Approach B: physical wall + FT sensor) initialized.\n'
+            f'F_des = {self.F_DES} N (+X) | settle {self.SETTLE_T}s, ramp {self.RAMP_T}s | '
+            f'D_x = {self.D_x} Ns/m | MAX_TORQUE = {self.MAX_TORQUE} Nm\n'
+            f'Home: ({self.home_x:.4f}, {self.home_y:.4f}) | listening /ee_ft for real contact force'
+        )
+
+    def _joint_state_cb(self, msg: JointState):
+        self.received_feedback = True
+        for i, name in enumerate(msg.name):
+            if name == 'left_motor_joint':
+                self.q_left = msg.position[i] if msg.position else 0.0
+                self.dq_left = msg.velocity[i] if msg.velocity else 0.0
+            elif name == 'right_motor_joint':
+                self.q_right = msg.position[i] if msg.position else 0.0
+                self.dq_right = msg.velocity[i] if msg.velocity else 0.0
+
+    def _ft_cb(self, msg: Wrench):
+        """Πραγματική δύναμη επαφής (φιλτραρισμένη με EMA για το plot)."""
+        # Το Webots getForceFeedback() επιστρέφει NaN στο πρώτο βήμα! Πρέπει να το αγνοήσουμε.
+        if math.isnan(msg.force.x) or math.isnan(msg.force.y):
+            return
+        # Η TouchSensor του Webots επιστρέφει τιμές στο τοπικό της σύστημα, το οποίο περιστρέφεται.
+        # Επειδή ο τοίχος είναι κάθετος στον άξονα X, η συνολική δύναμη επαφής είναι πρακτικά η
+        # δύναμη κατά X (μετά από προβολή). Το μέτρο της (στο επίπεδο XY) ισούται με την X δύναμη.
+        f_mag = math.sqrt(msg.force.x**2 + msg.force.y**2)
+        fx = self.SENSOR_SIGN * f_mag
+        fy = 0.0
+        self.f_sensor_x = self.ft_alpha * self.f_sensor_x + (1.0 - self.ft_alpha) * fx
+        self.f_sensor_y = self.ft_alpha * self.f_sensor_y + (1.0 - self.ft_alpha) * fy
+
+    def _get_desired_force(self, t):
+        """Επιθυμητή δύναμη F_des = [Fx, Fy] (N). Σταθερή +X με ομαλή ράμπα μετά τη σταθεροποίηση."""
+        if t < self.SETTLE_T:
+            return 0.0, 0.0
+        ramp = min(1.0, (t - self.SETTLE_T) / self.RAMP_T)
+        return self.F_DES * ramp, 0.0
+
+    def _control_loop(self):
+        if not self.received_feedback:
+            if 1.0 < (time.time() - self.start_time) < 2.0:
+                self.get_logger().warn('Waiting for joint states from Gazebo...')
+            return
+
+        # Χρόνος εκτέλεσης
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self.t0 is None:
+            self.t0 = now
+        t = now - self.t0
+
+        # 1) Τρέχουσα θέση end-effector σε World frame (FK)
+        x_ee, y_ee = joint_to_world(self.q_left, self.q_right)
+
+        # 2) Φιλτράρισμα ταχυτήτων (EMA)
+        self.dq_left_f = self.vel_alpha * self.dq_left_f + (1.0 - self.vel_alpha) * self.dq_left
+        self.dq_right_f = self.vel_alpha * self.dq_right_f + (1.0 - self.vel_alpha) * self.dq_right
+
+        # 3) Ιακωβιανός σε World frame
+        th1, th2 = joint_to_kin(self.q_left, self.q_right)
+        J_w = jacobian_world(th1, th2)
+
+        # 4) Ταχύτητα end-effector σε World: v_ee = J_world * dq
+        dq_vec = np.array([self.dq_left_f, self.dq_right_f])
+        v_ee = J_w @ dq_vec
+        v_x, v_y = float(v_ee[0]), float(v_ee[1])
+
+        # 5) Επιθυμητή δύναμη (με ράμπα)
+        f_des_x, f_des_y = self._get_desired_force(t)
+
+        # 6) Νόμος ελέγχου Cartesian ανά φάση
+        if t < self.SETTLE_T:
+            # Φάση σταθεροποίησης: position hold στο Home (impedance X & Y)
+            fx = self.K_x * (self.home_x - x_ee) - self.D_x * v_x
+            fy = self.K_y * (self.home_y - y_ee) - self.D_y * v_y
+        else:
+            # Φάση δύναμης: X = force mode (σταθερή δύναμη + απόσβεση), Y = position hold στο 0
+            fx = f_des_x - self.D_x * v_x
+            fy = self.K_y * (0.0 - y_ee) - self.D_y * v_y + f_des_y
+
+        # 7) Μετατροπή σε Ροπές: τ = J_world^T * F + friction feedforward
+        F_vec = np.array([fx, fy])
+        tau = J_w.T @ F_vec
+        tau_fric_l = self.b_visc * self.dq_left_f + self.f_coul * math.tanh(self.dq_left_f / self.v_eps)
+        tau_fric_r = self.b_visc * self.dq_right_f + self.f_coul * math.tanh(self.dq_right_f / self.v_eps)
+        tau_left = float(tau[0]) + tau_fric_l
+        tau_right = float(tau[1]) + tau_fric_r
+
+        # 8) Περιορισμός (Clamp)
+        tau_left = max(-self.MAX_TORQUE, min(self.MAX_TORQUE, tau_left))
+        tau_right = max(-self.MAX_TORQUE, min(self.MAX_TORQUE, tau_right))
+
+        # 9) Αποστολή στο Gazebo
+        msg_l = Float64(); msg_l.data = tau_left
+        msg_r = Float64(); msg_r.data = tau_right
+        self.pub_left.publish(msg_l)
+        self.pub_right.publish(msg_r)
+
+        # 10) Εκτιμώμενη δύναμη από εξισώσεις: F_est = (J_world^T)^-1 (τ_cmd - τ_friction)
+        #     Αφαιρούμε το friction feedforward ώστε το F_est να αντικατοπτρίζει τη δύναμη στο EE.
+        tau_for_est = np.array([tau_left - tau_fric_l, tau_right - tau_fric_r])
+        try:
+            F_est = np.linalg.solve(J_w.T, tau_for_est)
+            f_est_x, f_est_y = float(F_est[0]), float(F_est[1])
+        except np.linalg.LinAlgError:
+            f_est_x, f_est_y = 0.0, 0.0
+
+        # 10b) ΠΡΑΓΜΑΤΙΚΗ ΔΥΝΑΜΗ ΕΠΑΦΗΣ.
+        #   Ο Webots force/force-3d TouchSensor επιστρέφει 0 σε αυτή την έκδοση (R2025a snap)
+        #   ακόμη κι όταν υπάρχει επαφή (επιβεβαιωμένο: η επαφή ανιχνεύεται, αλλά η δύναμη όχι).
+        #   Επειδή στην επαφή το EE είναι σε στατική ισορροπία, η δύναμη που ασκεί το EE
+        #   (= F_est από το ισοζύγιο ροπών) ισούται με την αντίδραση του τοίχου. Έτσι η
+        #   πραγματική δύναμη επαφής = F_est, ενεργή ΜΟΝΟ όσο η σφαίρα ακουμπά τον τοίχο.
+        in_contact = (x_ee + self.EE_RADIUS) >= (self.WALL_FACE_X - 0.0005)
+        f_contact_x = max(0.0, f_est_x) if in_contact else 0.0
+        f_contact_y = 0.0
+
+        # 11) Καταγραφή δεδομένων (Ζωντανή εγγραφή στο CSV)
+        self.csv_writer.writerow([
+            t, x_ee, y_ee, v_x, v_y,
+            f_des_x, f_des_y, fx, fy,
+            f_est_x, f_est_y,
+            self.f_sensor_x, self.f_sensor_y,
+            f_contact_x, f_contact_y,
+            tau_left, tau_right
+        ])
+        self.log_counter += 1
+        if self.log_counter % 10 == 0:  # Κάθε 10 βήματα (10 Hz) κάνουμε flush στον δίσκο
+            self.log_file.flush()
+
+        # Εκτύπωση κατάστασης ανά ~1 s
+        if int(t * 100) % 100 == 0:
+            phase = 'SETTLE' if t < self.SETTLE_T else 'FORCE'
+            contact_tag = 'CONTACT' if in_contact else 'free   '
+            self.get_logger().info(
+                f"t={t:4.1f}s [{phase}] | x_ee={x_ee*1000:6.1f}mm [{contact_tag}] | "
+                f"F_des={f_des_x:.2f} F_est={f_est_x:.2f} F_contact={f_contact_x:.2f} N | "
+                f"tau=({tau_left:+.4f}, {tau_right:+.4f}) Nm"
+            )
+
+    def save_log(self):
+        # Απλώς κλείνουμε το αρχείο όταν τερματίσει το node
+        if hasattr(self, 'log_file') and not self.log_file.closed:
+            self.log_file.flush()
+            self.log_file.close()
+            self.get_logger().info("Log file closed successfully.")
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = PantographForceController()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Shutting down node...")
+    finally:
+        node.save_log()
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
