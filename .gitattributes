@@ -1,0 +1,2 @@
+# Third-party Unity package: keep it out of the GitHub language stats
+unity/ROS-TCP-Connector/** linguist-vendored
