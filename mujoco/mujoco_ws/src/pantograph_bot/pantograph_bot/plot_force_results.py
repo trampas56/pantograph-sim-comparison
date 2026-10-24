@@ -95,13 +95,6 @@ def main():
     plt.savefig(out_primary, dpi=150)
     print(f"Plot saved to: {out_primary}")
 
-    pkg_dir = "/home/leuteris/Desktop/pantograph/mujoco/mujoco_ws/src/pantograph_bot"
-    if os.path.isdir(pkg_dir):
-        out_pkg = os.path.join(pkg_dir, 'force_control_plot.png')
-        if os.path.abspath(out_pkg) != os.path.abspath(out_primary):
-            plt.savefig(out_pkg, dpi=150)
-            print(f"Plot also saved to: {out_pkg}")
-
 
 if __name__ == '__main__':
     main()

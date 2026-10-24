@@ -104,7 +104,7 @@ class PantographForceController(Node):
         # Logging
         # Open the file up front so we write live!
         self.log_filename = os.path.join(
-            os.path.expanduser('~'), 'Desktop', 'pantograph', 'webots',
+            os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
             'webots_force_log.csv'
         )
         self.log_file = open(self.log_filename, 'w', newline='')

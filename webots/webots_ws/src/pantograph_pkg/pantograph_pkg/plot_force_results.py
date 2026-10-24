@@ -36,8 +36,20 @@ def ema_smooth(y, alpha=0.9):
 
 
 def find_csv():
-    # Use the same path as defined in ForceControl.py
-    return os.path.join(os.path.expanduser('~'), 'Desktop', 'pantograph', 'webots', 'webots_force_log.csv')
+    # realpath: follows the install symlink -> same folder as ForceControl.py (source package).
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    candidates = [
+        os.path.join(current_dir, 'webots_force_log.csv'),
+        os.path.join(os.path.dirname(current_dir), 'webots_force_log.csv'),
+        os.path.join(os.path.dirname(os.path.dirname(current_dir)), 'webots_force_log.csv'),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    print("Error: webots_force_log.csv not found. Searched:")
+    for p in candidates:
+        print(f"  - {p}")
+    return None
 
 def main():
     csv_path = find_csv()
