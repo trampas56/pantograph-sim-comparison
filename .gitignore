@@ -1,0 +1,27 @@
+# colcon workspaces
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+
+# Unity: regenerated when the project is opened
+unity/PantographSim/[Ll]ibrary/
+unity/PantographSim/[Tt]emp/
+unity/PantographSim/[Oo]bj/
+unity/PantographSim/[Ll]ogs/
+unity/PantographSim/[Uu]ser[Ss]ettings/
+unity/PantographSim/.vs/
+unity/PantographSim/.idea/
+unity/PantographSim/*.csproj
+unity/PantographSim/*.sln
+
+# Logs and plots written by the experiments
+force_control_log.csv
+force_control_plot.png
+webots_force_log.csv
+webots_force_control_plot.png
+unity/PantographSim/*.csv
+unity/PantographSim/*.png
