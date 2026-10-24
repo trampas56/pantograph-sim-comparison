@@ -19,6 +19,14 @@ The thesis is in Greek: [thesis (PDF)](docs/Thesis_4625.pdf), [slides (PDF)](doc
   </tr>
 </table>
 
+## How it's set up
+
+![The five-bar pantograph](docs/images/pantograph_geometry.png)
+
+The motors are at O and C and the tip is E. `Kinematics.py` uses the same names (l0 to l4, θ1, θ2) for the forward and inverse kinematics and the Jacobian.
+
+In Gazebo, Webots and MuJoCo the controller is the same ROS 2 node, only the bridge to the simulator changes (ros_gz_bridge, webots_ros2_driver, and my own node for MuJoCo). In Unity the same control law runs inside the engine, as a C# script.
+
 ## Results
 
 At 2 N the motors reach their torque limit (0.1 Nm), and in all four simulators the estimated force stops where the Jacobian says it should: 1.341 N, or 1.476 N in Unity. The force that gets to the wall is another story:
