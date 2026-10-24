@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-fig_force_levels.py - Τα τρία σχήματα σύγκρισης του ελέγχου δύναμης
-(0,5 N, 1 N, 2 N), ένα ανά επίπεδο, με τέσσερα πλαίσια όπως οι διαφάνειες
-17-19 της παρουσίασης: Gazebo, Webots / MuJoCo, Unity.
+fig_force_levels.py - The three comparison figures of the force control
+(0.5 N, 1 N, 2 N), one per level, with four panels as in slides
+17-19 of the presentation: Gazebo, Webots / MuJoCo, Unity.
 
-Δεδομένα: thesis/data/force/<προσομοιωτής>_<επίπεδο>N.csv
-  gazebo, mujoco : εκτελέσεις Σεπτεμβρίου 2026 (κοινός ελεγκτής)
-  webots         : 0,5 και 2 N της 24/9, 1 N του Ιουνίου
-  unity          : επαναλήψεις Οκτωβρίου 2026
-Έξοδος: thesis/figures/common/fig_force_{05,1,2}N.pdf
+Data: thesis/data/force/<simulator>_<level>N.csv
+  gazebo, mujoco : runs of September 2026 (shared controller)
+  webots         : 0.5 and 2 N from 24 September, 1 N from June
+  unity          : repeats of October 2026
+Output: thesis/figures/common/fig_force_{05,1,2}N.pdf
 
-Χρήση: python3 scripts/fig_force_levels.py   (από τον φάκελο thesis/)
+Usage: python3 scripts/fig_force_levels.py   (from the thesis/ folder)
 """
 import csv
 import os
@@ -50,9 +50,9 @@ def load(path):
 
 
 def series(sim, lvl):
-    """Χρόνος από την αρχή της ράμπας, F_des, F_est, μέτρηση."""
+    """Time from the start of the ramp, F_des, F_est, measurement."""
     c = load(os.path.join(DATA, f'{sim}_{lvl}N.csv'))
-    if sim == 'unity':                       # η ράμπα ξεκινά στο t = 0
+    if sim == 'unity':                       # the ramp starts at t = 0
         return c['t'], c['F_cmd_N'], c['F_est_N'], c['contactF_N']
     meas = c['f_contact_x'] if sim == 'webots' else c['f_sensor_x']
     return c['t'] - 2.0, c['f_des_x'], c['f_est_x'], meas
@@ -77,19 +77,19 @@ def panel(ax, sim, lvl):
     ax.plot(t[sel], fm[sel], color=RED, lw=1.5)
     if lvl == '2':
         ax.axhline(LIMIT[sim], color='#8a8f98', lw=0.7, ls=(0, (1, 2)))
-        ax.text(hi, LIMIT[sim] + 0.05, f'όριο ροπής {LIMIT[sim]:.3f} N'.replace('.', ','),
+        ax.text(hi, LIMIT[sim] + 0.05, f'torque limit {LIMIT[sim]:.3f} N',
                 ha='right', va='bottom', fontsize=7, color='#5d636e')
     peak = fm[sel].max()
-    if peak > top:                          # αιχμή πρόσκρουσης έξω από την κλίμακα
+    if peak > top:                          # impact peak outside the scale
         tp = t[sel][np.argmax(fm[sel])]
-        ax.annotate(f'αιχμή {peak:.1f} N'.replace('.', ','), xy=(tp, top * 0.97),
+        ax.annotate(f'peak {peak:.1f} N', xy=(tp, top * 0.97),
                     xytext=(tp + 1.0, top * 0.92), fontsize=7, color=RED, va='center',
                     arrowprops=dict(arrowstyle='->', color=RED, lw=0.8))
     ax.set_xlim(lo, hi)
     ax.set_ylim(-0.05 * top, top)
     ax.set_title(name, color=color, loc='left', fontweight='bold')
-    if sim == 'webots':                     # ο αισθητήρας δίνει 0, η κόκκινη είναι το ισοζύγιο
-        ax.set_title('δύναμη από ισοζύγιο', loc='right', fontsize=7.5, color='#5d636e')
+    if sim == 'webots':                     # the sensor gives 0, the red line is the torque balance
+        ax.set_title('force from torque balance', loc='right', fontsize=7.5, color='#5d636e')
 
 
 def figure(lvl):
@@ -97,14 +97,14 @@ def figure(lvl):
     for ax, sim in zip(axes.flat, ('gazebo', 'webots', 'mujoco', 'unity')):
         panel(ax, sim, lvl)
     for ax in axes[:, 0]:
-        ax.set_ylabel('δύναμη (N)')
+        ax.set_ylabel('force (N)')
     for ax in axes[1, :]:
-        ax.set_xlabel('χρόνος από την αρχή της ράμπας (s)')
+        ax.set_xlabel('time from the start of the ramp (s)')
     h = [Line2D([0], [0], color='black', lw=0.9, ls=(0, (4, 2.5))),
          Line2D([0], [0], color='#8a8f98', lw=1.0),
          Line2D([0], [0], color=RED, lw=1.5)]
-    lab = ['$F_{des}$, η εντολή', '$F_{est}$, από τις ροπές',
-           '$F_{sensor}$, η δύναμη στον τοίχο']
+    lab = ['$F_{des}$, the command', '$F_{est}$, from the torques',
+           '$F_{sensor}$, the force on the wall']
     fig.tight_layout(rect=(0, 0.07, 1, 1), h_pad=0.8, w_pad=1.2)
     fig.legend(h, lab, loc='lower center', ncol=3, frameon=False,
                bbox_to_anchor=(0.5, 0.0), handlelength=2.4)

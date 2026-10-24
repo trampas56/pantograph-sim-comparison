@@ -4,7 +4,7 @@
   <name>pantograph_bot</name>
   <version>0.0.0</version>
   <description>MuJoCo Pantograph Bot ROS 2 Package</description>
-  <maintainer email="trampasleuteris@gmail.com">Τράμπας Ελευθέριος</maintainer>
+  <maintainer email="trampasleuteris@gmail.com">Eleftherios Trampas</maintainer>
   <license>Apache-2.0</license>
 
   <depend>rclpy</depend>

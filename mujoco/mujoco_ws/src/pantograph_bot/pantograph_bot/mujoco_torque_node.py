@@ -40,7 +40,7 @@ class MuJoCoTorqueNode(Node):
         # Subscriptions for motor torque commands
         self.create_subscription(Float64, '/left_motor/cmd_torque',  self._cb_left,  10)
         self.create_subscription(Float64, '/right_motor/cmd_torque', self._cb_right, 10)
-        # Η προσομοίωση ξεκινά με την πρώτη εντολή ροπής, ώστε ο μηχανισμός να μη γλιστρά όσο περιμένει τον ελεγκτή
+        # The simulation starts with the first torque command, so the mechanism does not slide while it waits for the controller
         self.cmd_received = False
 
         # Publisher for joint states
@@ -126,15 +126,15 @@ def main(args=None):
     node.get_logger().info("Launching MuJoCo passive viewer for Torque Control...")
     node.get_logger().info("Waiting for the first torque command (simulation paused)...")
 
-    # Θέσεις των σωμάτων για το παράθυρο, χωρίς να προχωρήσει ο χρόνος
+    # Body positions for the viewer, without advancing time
     mujoco.mj_forward(model, data)
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running() and rclpy.ok():
             start_time = time.time()
 
-            # Process ROS callbacks (non-blocking). Ο ελεγκτής στέλνει δύο εντολές ανά κύκλο
-            # (μία ανά κινητήρα) και το spin_once εκτελεί μία, έτσι εκτελούνται όλες όσες περιμένουν.
+            # Process ROS callbacks (non-blocking). The controller sends two commands per cycle
+            # (one per motor) and spin_once runs one, so this runs all that are waiting.
             for _ in range(50):
                 rclpy.spin_once(node, timeout_sec=0.0)
 

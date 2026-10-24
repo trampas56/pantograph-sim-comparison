@@ -1,17 +1,17 @@
-// PantographSetup.cs - Editor-only setup για τον five-bar (ΔΡΟΜΟΣ B: πλήρης φυσική).
-// Μετατρέπει τον εισαγόμενο ArticulationBody-tree σε Rigidbody + αρθρώσεις και
-// ΚΛΕΙΝΕΙ τον παράλληλο βρόχο ΧΩΡΙΣ να σπάει:
+// PantographSetup.cs - Editor-only setup for the five-bar (PATH B: full physics).
+// Converts the imported ArticulationBody tree into Rigidbody + joints and
+// CLOSES the parallel loop WITHOUT it breaking:
 //
-//   1) base + δύο cranks -> KINEMATIC (η βάση καρφωμένη, οι μανιβέλες οδηγούνται).
-//   2) left_arm, right_arm, end_effector -> DYNAMIC (ελαφριά, χωρίς βαρύτητα).
-//   3) SNAP στη ΣΩΣΤΗ κλειστή θέση (τομή 2 κύκλων) ΠΡΙΝ μπουν οι αρθρώσεις ->
-//      το constraint ξεκινά με ~0 σφάλμα (όχι 196mm yank που εκρήγνυται).
-//   4) Δέντρο: HingeJoint στους αγκώνες (left_elbow, right_elbow) + ee_left.
-//   5) ΚΛΕΙΣΙΜΟ ΒΡΟΧΟΥ: ConfigurableJoint right_arm <-> end_effector με
-//      linear LOCKED + free spin γύρω από το επίπεδο + PROJECTION -> δεν ξεκολλάει.
+//   1) base + two cranks -> KINEMATIC (the base is pinned, the cranks are driven).
+//   2) left_arm, right_arm, end_effector -> DYNAMIC (light, no gravity).
+//   3) SNAP to the CORRECT closed pose (intersection of 2 circles) BEFORE the joints are added ->
+//      the constraint starts with ~0 error (not a 196mm yank that explodes).
+//   4) Tree: HingeJoint at the elbows (left_elbow, right_elbow) + ee_left.
+//   5) LOOP CLOSURE: ConfigurableJoint right_arm <-> end_effector with
+//      linear LOCKED + free spin about the plane normal + PROJECTION -> it does not come apart.
 //
-// ΣΗΜΑΝΤΙΚΟ: τρέξε σε EDIT mode (όχι Play). Αν αποτύχει η αφαίρεση των
-// ArticulationBody, ΞΑΝΑΦΟΡΤΩΣΕ τη σκηνή χωρίς save και ξανατρέξε.
+// IMPORTANT: run in EDIT mode (not Play). If removing the
+// ArticulationBody fails, RELOAD the scene without saving and run again.
 // Menu: Tools > Pantograph > Setup Five-Bar (Physics + Loop Closure)
 #if UNITY_EDITOR
 using System.Collections.Generic;
@@ -23,15 +23,15 @@ public static class PantographSetup
     const string RootName = "five_bar_mechanism";
     static readonly string[] LinkNames =
         { "base_link", "left_crank", "left_arm", "end_effector_link", "right_crank", "right_arm" };
-    // ΚΙΝΗΜΑΤΙΚΑ (οδηγούμενα/καρφωμένα) - τα υπόλοιπα γίνονται δυναμικά
+    // KINEMATIC (driven/pinned) - the rest become dynamic
     static readonly string[] Kinematic =
         { "base_link", "left_crank", "right_crank" };
-    // Αρθρώσεις δέντρου: child -> (parent στο hierarchy). ΟΧΙ στους cranks (οδηγούνται απευθείας).
-    // Το end_effector ΔΕΝ είναι εδώ - μπαίνει ως rigid weld στο left_arm (όχι revolute).
+    // Tree joints: child -> (parent in the hierarchy). NOT on the cranks (they are driven directly).
+    // The end_effector is NOT here - it is added as a rigid weld to left_arm (not revolute).
     static readonly string[] TreeHinges =
         { "left_arm", "right_arm" };
 
-    // κατάσταση που περνά ανάμεσα στις δύο φάσεις
+    // state passed between the two phases
     static GameObject s_root;
     static Dictionary<string, Transform> s_links;
     static Dictionary<string, Vector3> s_anchorPos;
@@ -44,21 +44,21 @@ public static class PantographSetup
     {
         if (EditorApplication.isPlaying)
         {
-            Debug.LogError("[PantographSetup] Βγες από το Play mode (πάτα το Play) και ξανατρέξε σε EDIT mode.");
+            Debug.LogError("[PantographSetup] Exit Play mode (press Play) and run again in EDIT mode.");
             return;
         }
 
         s_root = GameObject.Find(RootName);
-        if (s_root == null) { Debug.LogError($"[PantographSetup] Δεν βρέθηκε root '{RootName}'."); return; }
+        if (s_root == null) { Debug.LogError($"[PantographSetup] Root '{RootName}' not found."); return; }
 
         s_links = new Dictionary<string, Transform>();
         foreach (var t in s_root.GetComponentsInChildren<Transform>(true))
             if (System.Array.IndexOf(LinkNames, t.name) >= 0 && !s_links.ContainsKey(t.name))
                 s_links[t.name] = t;
         foreach (var n in LinkNames)
-            if (!s_links.ContainsKey(n)) { Debug.LogError($"[PantographSetup] Λείπει το link '{n}'."); return; }
+            if (!s_links.ContainsKey(n)) { Debug.LogError($"[PantographSetup] Link '{n}' is missing."); return; }
 
-        // --- ΦΑΣΗ 1: κατέγραψε δεδομένα άρθρωσης & ΣΒΗΣΕ ΟΛΑ τα ArticulationBody ---
+        // --- PHASE 1: record the joint data & DELETE ALL ArticulationBody components ---
         s_anchorPos = new Dictionary<string, Vector3>();
         s_anchorRot = new Dictionary<string, Quaternion>();
         s_mass = new Dictionary<string, float>();
@@ -71,16 +71,16 @@ public static class PantographSetup
             if (ab != null)
             {
                 s_mass[n]      = Mathf.Max(ab.mass, 0.001f);
-                s_anchorPos[n] = ab.anchorPosition;   // θέση άρθρωσης στο local frame του link
-                s_anchorRot[n] = ab.anchorRotation;   // ο revolute άξονας = X αυτού του frame
+                s_anchorPos[n] = ab.anchorPosition;   // joint position in the link's local frame
+                s_anchorRot[n] = ab.anchorRotation;   // the revolute axis = X of this frame
             }
         }
-        // Σημ.: ΔΕΝ εξαρτιόμαστε πλέον από δεδομένα ArticulationBody για τους άξονες -
-        // ο άξονας υπολογίζεται γεωμετρικά (SnapToConsistentHome), ώστε το Setup να
-        // δουλεύει και σε σκηνή που έχει ΗΔΗ μετατραπεί σε Rigidbody (καμία AB).
+        // Note: we NO LONGER depend on ArticulationBody data for the axes -
+        // the axis is computed geometrically (SnapToConsistentHome), so that Setup also
+        // works on a scene that has ALREADY been converted to Rigidbody (no AB).
 
-        // ΠΡΩΤΑ αφαίρεσε τα URDF helper scripts (UrdfInertial/UrdfJointRevolute/UrdfLink...) που
-        // "κλειδώνουν" το ArticulationBody μέσω [RequireComponent], αλλιώς ΔΕΝ αφαιρείται.
+        // FIRST remove the URDF helper scripts (UrdfInertial/UrdfJointRevolute/UrdfLink...) that
+        // "lock" the ArticulationBody through [RequireComponent], otherwise it is NOT removed.
         foreach (var n in LinkNames)
         {
             var go = s_links[n].gameObject;
@@ -97,13 +97,13 @@ public static class PantographSetup
                 if (!removed) break;
             }
         }
-        // ΤΩΡΑ αφαιρείται το ArticulationBody
+        // NOW the ArticulationBody can be removed
         foreach (var ab in s_root.GetComponentsInChildren<ArticulationBody>(true))
             Object.DestroyImmediate(ab);
 
         s_retries = 0;
-        EditorApplication.delayCall += FinishSetup;   // ΦΑΣΗ 2 στο επόμενο editor-tick
-        Debug.Log("[PantographSetup] Αφαιρέθηκαν τα ArticulationBody. Ολοκλήρωση στο επόμενο tick...");
+        EditorApplication.delayCall += FinishSetup;   // PHASE 2 on the next editor tick
+        Debug.Log("[PantographSetup] ArticulationBody components removed. Finishing on the next tick...");
     }
 
     static void FinishSetup()
@@ -111,58 +111,58 @@ public static class PantographSetup
         EditorApplication.delayCall -= FinishSetup;
         if (s_root == null || s_links == null) return;
 
-        // Δοκίμασε Rigidbody στο base_link, αν το Unity δεν έχει "καθαρίσει" ακόμα τα
-        // ArticulationBody, το AddComponent γυρίζει null -> ξαναδοκίμασε στο επόμενο tick.
+        // Try a Rigidbody on base_link; if Unity has not "cleaned up" the
+        // ArticulationBody yet, AddComponent returns null -> try again on the next tick.
         var baseGo = s_links["base_link"].gameObject;
         var rbTest = baseGo.GetComponent<Rigidbody>();
         if (rbTest == null) rbTest = baseGo.AddComponent<Rigidbody>();
         if (rbTest == null)
         {
             if (s_retries++ < 8) { EditorApplication.delayCall += FinishSetup; return; }
-            Debug.LogError("[PantographSetup] Το Unity δεν επιτρέπει ακόμα Rigidbody. " +
-                           "Ξαναφόρτωσε τη σκηνή χωρίς save και ξανατρέξε.");
+            Debug.LogError("[PantographSetup] Unity does not allow a Rigidbody yet. " +
+                           "Reload the scene without saving and run again.");
             return;
         }
 
-        // --- ΦΑΣΗ 2α: Rigidbody σε όλα τα links ---
+        // --- PHASE 2a: Rigidbody on all links ---
         foreach (var n in LinkNames)
         {
             var go = s_links[n].gameObject;
             var rb = go.GetComponent<Rigidbody>();
             if (rb == null) rb = go.AddComponent<Rigidbody>();
             rb.mass = s_mass[n];
-            rb.useGravity = false;                  // οριζόντιος μηχανισμός - χωρίς βαρύτητα
+            rb.useGravity = false;                  // horizontal mechanism - no gravity
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
             rb.linearDamping = 0.05f;
             rb.angularDamping = 0.05f;
-            rb.solverIterations = 80;               // σταθερότητα κλειστού βρόχου (per-body)
+            rb.solverIterations = 80;               // closed-loop stability (per body)
             rb.solverVelocityIterations = 40;
             rb.centerOfMass = Vector3.zero;
-            rb.inertiaTensor = Vector3.one * 1e-4f; // μικρά/ελαφριά links (χωρίς colliders)
+            rb.inertiaTensor = Vector3.one * 1e-4f; // small/light links (no colliders)
             rb.isKinematic = false;
         }
         foreach (var n in Kinematic)
             s_links[n].GetComponent<Rigidbody>().isKinematic = true;
 
-        // Καθάρισε ΟΛΕΣ τις παλιές αρθρώσεις (από προηγούμενο setup A/B) -> idempotent,
-        // δουλεύει πάνω σε ό,τι σκηνή κι αν έχεις ήδη.
+        // Remove ALL old joints (from a previous setup A/B) -> idempotent,
+        // works on whatever scene you already have.
         foreach (var n in LinkNames)
             foreach (var j in s_links[n].GetComponents<Joint>())
                 Object.DestroyImmediate(j);
 
-        // --- ΦΑΣΗ 2β: SNAP στη ΣΩΣΤΗ κλειστή θέση (τομή 2 κύκλων) ---
-        // Στρέφουμε τα δύο χέρια ώστε οι άκρες τους να ΣΥΜΠΙΠΤΟΥΝ στο EE, ΠΡΙΝ μπει
-        // το constraint. Έτσι το loop closure ξεκινά με ~0 σφάλμα -> δεν εκρήγνυται.
+        // --- PHASE 2b: SNAP to the CORRECT closed pose (intersection of 2 circles) ---
+        // Rotate the two arms so that their tips COINCIDE at the EE, BEFORE the
+        // constraint is added. This way the loop closure starts with ~0 error -> it does not explode.
         Vector3 planeN, eePos;
         SnapToConsistentHome(out planeN, out eePos);
 
-        // --- ΦΑΣΗ 2γ: HingeJoint στις αρθρώσεις του δέντρου (αγκώνες + ee) ---
+        // --- PHASE 2c: HingeJoint at the tree joints (elbows + ee) ---
         foreach (var n in TreeHinges)
         {
             var child = s_links[n];
             var parentRb = child.parent ? child.parent.GetComponent<Rigidbody>() : null;
-            if (parentRb == null) { Debug.LogWarning($"[PantographSetup] '{n}': χωρίς parent Rigidbody."); continue; }
+            if (parentRb == null) { Debug.LogWarning($"[PantographSetup] '{n}': no parent Rigidbody."); continue; }
 
             foreach (var old in child.GetComponents<HingeJoint>()) Object.DestroyImmediate(old);             // idempotent
             foreach (var old in child.GetComponents<ConfigurableJoint>()) Object.DestroyImmediate(old);
@@ -170,15 +170,15 @@ public static class PantographSetup
             var hj = child.gameObject.AddComponent<HingeJoint>();
             hj.connectedBody = parentRb;
             hj.anchor = s_anchorPos[n];
-            hj.axis = child.InverseTransformDirection(planeN).normalized;   // revolute γύρω από το επίπεδο
-            hj.autoConfigureConnectedAnchor = true;                         // rest = τρέχουσα (κλειστή) θέση
+            hj.axis = child.InverseTransformDirection(planeN).normalized;   // revolute about the plane normal
+            hj.autoConfigureConnectedAnchor = true;                         // rest = current (closed) pose
             hj.enableCollision = false;
             hj.enablePreprocessing = false;
         }
 
-        // --- EE: rigid weld (ConfigurableJoint all-locked + projection) στο left_arm ---
-        // Το end_effector είναι η άκρη του αριστερού χεριού, το κρατάμε ΑΚΑΜΠΤΑ πάνω του
-        // (όχι revolute) ώστε να μην υπάρχει ελεύθερος βαθμός περιστροφής που τρέμει.
+        // --- EE: rigid weld (ConfigurableJoint all-locked + projection) to left_arm ---
+        // The end_effector is the tip of the left arm; we hold it RIGIDLY on it
+        // (not revolute) so that there is no free rotational degree of freedom that jitters.
         {
             var eeT = s_links["end_effector_link"];
             var leftArmRb = s_links["left_arm"].GetComponent<Rigidbody>();
@@ -198,70 +198,70 @@ public static class PantographSetup
             weld.breakTorque = Mathf.Infinity;
         }
 
-        // --- ΦΑΣΗ 2δ: ΚΛΕΙΣΙΜΟ ΒΡΟΧΟΥ - ConfigurableJoint right_arm <-> end_effector ---
+        // --- PHASE 2d: LOOP CLOSURE - ConfigurableJoint right_arm <-> end_effector ---
         // = MuJoCo <connect> / Gazebo DetachableJoint. Point-coincidence + free spin
-        // γύρω από το επίπεδο, με PROJECTION ώστε να ΜΗΝ ξεκολλάει ποτέ οπτικά.
+        // about the plane normal, with PROJECTION so that it NEVER comes apart visually.
         var rightArm = s_links["right_arm"];
         var ee = s_links["end_effector_link"];
         foreach (var old in rightArm.GetComponents<ConfigurableJoint>()) Object.DestroyImmediate(old);       // idempotent
 
         var loop = rightArm.gameObject.AddComponent<ConfigurableJoint>();
         loop.connectedBody = ee.GetComponent<Rigidbody>();
-        loop.anchor = rightArm.InverseTransformPoint(eePos);               // άκρη δεξιού χεριού (=EE) στο home
-        loop.autoConfigureConnectedAnchor = true;                         // connectedAnchor ~ κέντρο EE
-        loop.axis = rightArm.InverseTransformDirection(planeN).normalized; // πρωτεύων = το επίπεδο normal
+        loop.anchor = rightArm.InverseTransformPoint(eePos);               // tip of the right arm (=EE) at home
+        loop.autoConfigureConnectedAnchor = true;                         // connectedAnchor ~ EE centre
+        loop.axis = rightArm.InverseTransformDirection(planeN).normalized; // primary = the plane normal
         loop.secondaryAxis = rightArm.InverseTransformDirection((eePos - rightArm.position)).normalized;
 
-        loop.xMotion = loop.yMotion = loop.zMotion = ConfigurableJointMotion.Locked;   // ίδιο σημείο (συγκόλληση θέσης)
-        loop.angularXMotion = ConfigurableJointMotion.Free;               // ελεύθερη περιστροφή γύρω από το επίπεδο
-        loop.angularYMotion = ConfigurableJointMotion.Locked;             // μένουν συνεπίπεδα
+        loop.xMotion = loop.yMotion = loop.zMotion = ConfigurableJointMotion.Locked;   // same point (position weld)
+        loop.angularXMotion = ConfigurableJointMotion.Free;               // free rotation about the plane normal
+        loop.angularYMotion = ConfigurableJointMotion.Locked;             // they stay coplanar
         loop.angularZMotion = ConfigurableJointMotion.Locked;
 
-        loop.projectionMode = JointProjectionMode.PositionAndRotation;    // ΚΛΕΙΔΙ: hard-snap -> δεν "σπάει"
-        loop.projectionDistance = 0.0005f;                                // 0.5mm ανοχή
+        loop.projectionMode = JointProjectionMode.PositionAndRotation;    // KEY: hard-snap -> it does not "break"
+        loop.projectionDistance = 0.0005f;                                // 0.5mm tolerance
         loop.projectionAngle = 1f;
         loop.enableCollision = false;
-        loop.enablePreprocessing = false;                                 // καλύτερη σταθερότητα σε stiff loop
-        loop.breakForce = Mathf.Infinity;                                 // ποτέ δεν σπάει
+        loop.enablePreprocessing = false;                                 // better stability in a stiff loop
+        loop.breakForce = Mathf.Infinity;                                 // never breaks
         loop.breakTorque = Mathf.Infinity;
 
         EditorUtility.SetDirty(s_root);
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(s_root.scene);
 
         float gapMm = Vector3.Distance(rightArm.TransformPoint(loop.anchor), ee.position) * 1000f;
-        Debug.Log($"[PantographSetup] Έτοιμο (ΔΡΟΜΟΣ B): 6x Rigidbody, 3 hinges + 1 ConfigurableJoint " +
-                  $"(projection ON). base & cranks = kinematic. Κενό κλεισίματος στο home = {gapMm:F3} mm. " +
-                  "Βάλε τον PantographPhysicsDrive στο root, Self Test Sweep Deg=8, Play, μετά ΑΠΟΘΗΚΕΥΣΕ (Ctrl+S).");
+        Debug.Log($"[PantographSetup] Ready (PATH B): 6x Rigidbody, 3 hinges + 1 ConfigurableJoint " +
+                  $"(projection ON). base & cranks = kinematic. Closure gap at home = {gapMm:F3} mm. " +
+                  "Put PantographPhysicsDrive on the root, Self Test Sweep Deg=8, Play, then SAVE (Ctrl+S).");
     }
 
-    // Τομή 2 κύκλων ίδιας ακτίνας (= μήκος χεριού): βρίσκει τη σωστή κλειστή θέση του EE
-    // και στρέφει τα δύο χέρια να δείχνουν εκεί ώστε οι άκρες να συμπίπτουν.
+    // Intersection of 2 circles of equal radius (= arm length): finds the correct closed EE pose
+    // and rotates the two arms to point there so that their tips coincide.
     static void SnapToConsistentHome(out Vector3 planeN, out Vector3 eePos)
     {
         Transform leftCrank = s_links["left_crank"], rightCrank = s_links["right_crank"];
         Transform leftArm = s_links["left_arm"], rightArm = s_links["right_arm"], ee = s_links["end_effector_link"];
 
-        // Άξονας περιστροφής κινητήρα = κάθετη στο επίπεδο του μηχανισμού.
-        // ΓΕΩΜΕΤΡΙΚΟΣ υπολογισμός (δεν χρειάζεται ArticulationBody): κάθετη στο επίπεδο
-        // που ορίζουν οι δύο κινητήρες και ο αριστερός αγκώνας.
+        // Motor rotation axis = normal to the mechanism plane.
+        // GEOMETRIC computation (no ArticulationBody needed): normal to the plane
+        // defined by the two motors and the left elbow.
         planeN = Vector3.Cross(rightCrank.position - leftCrank.position,
                                leftArm.position - leftCrank.position).normalized;
         if (planeN.sqrMagnitude < 1e-9f) planeN = Vector3.up;
 
-        // Πραγματικό μήκος χεριού (rigid local offset - ανεξάρτητο από το σπασμένο home)
+        // Actual arm length (rigid local offset - independent of the broken home)
         Vector3 tipLocal = leftArm.InverseTransformPoint(ee.position);
         float armLen = tipLocal.magnitude;
 
-        Vector3 pa = leftArm.position, pb = rightArm.position;        // θέσεις αγκώνων
+        Vector3 pa = leftArm.position, pb = rightArm.position;        // elbow positions
         Vector3 dv = pb - pa; float d = Mathf.Max(dv.magnitude, 1e-6f);
-        float aDist = d * 0.5f;                                        // ίσες ακτίνες -> μέσο
+        float aDist = d * 0.5f;                                        // equal radii -> midpoint
         float h2 = armLen * armLen - aDist * aDist;
         float h = h2 > 0f ? Mathf.Sqrt(h2) : 0f;
         Vector3 m = pa + (aDist / d) * dv;
         Vector3 perp = Vector3.Cross(planeN, dv).normalized;
         Vector3 refCenter = (leftCrank.position + rightCrank.position) * 0.5f;
         Vector3 c1 = m + h * perp, c2 = m - h * perp;
-        // διάλεξε την τομή στην πλευρά εργασίας (μακρύτερα από το κέντρο των κινητήρων)
+        // pick the intersection on the working side (farther from the centre of the motors)
         eePos = (c1 - refCenter).sqrMagnitude >= (c2 - refCenter).sqrMagnitude ? c1 : c2;
 
         Vector3 armDirL = (leftArm.TransformPoint(tipLocal) - leftArm.position).normalized;

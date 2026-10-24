@@ -4,7 +4,7 @@
   <name>five_bar_sim</name>
   <version>0.0.0</version>
   <description>Pantograph 5-bar mechanism Gazebo simulation</description>
-  <maintainer email="trampasleuteris@gmail.com">Τράμπας Ελευθέριος</maintainer>
+  <maintainer email="trampasleuteris@gmail.com">Eleftherios Trampas</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

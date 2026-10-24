@@ -1,13 +1,13 @@
-// PantographPhysicsDrive.cs - ΔΡΟΜΟΣ B (πλήρης φυσική) drive για τον five-bar.
+// PantographPhysicsDrive.cs - PATH B (full physics) drive for the five-bar.
 //
-// Οδηγεί τις ΚΙΝΗΜΑΤΙΚΕΣ μανιβέλες (cranks) στις εντολές θέσης του ROS 2
-//   /left_motor/cmd_pos , /right_motor/cmd_pos   (Float64, rad - q=0 στο home),
-// με MoveRotation στο FixedUpdate. Τα ΔΥΝΑΜΙΚΑ χέρια ακολουθούν μέσω των αρθρώσεων,
-// και το ConfigurableJoint κλεισίματος (PantographSetup) τα κρατά ΕΝΩΜΕΝΑ.
+// Drives the KINEMATIC cranks to the ROS 2 position commands
+//   /left_motor/cmd_pos , /right_motor/cmd_pos   (Float64, rad - q=0 at home),
+// with MoveRotation in FixedUpdate. The DYNAMIC arms follow through the joints,
+// and the closing ConfigurableJoint (PantographSetup) keeps them JOINED.
 //
-// Προϋπόθεση: έχει τρέξει "Tools > Pantograph > Setup Five-Bar (Physics + Loop Closure)".
-// ΤΟΠΟΘΕΤΗΣΗ: στο root 'five_bar_mechanism'. (Αφαίρεσε τον παλιό PantographController
-// - αυτός κάνει τα πάντα kinematic, που ακυρώνει τη φυσική του Δρόμου B.)
+// Prerequisite: "Tools > Pantograph > Setup Five-Bar (Physics + Loop Closure)" has been run.
+// PLACEMENT: on the root 'five_bar_mechanism'. (Remove the old PantographController
+// - it makes everything kinematic, which cancels the physics of Path B.)
 using System.IO;
 using UnityEngine;
 using Unity.Robotics.ROSTCPConnector;
@@ -19,22 +19,22 @@ public class PantographPhysicsDrive : MonoBehaviour
     public string leftTopic  = "/left_motor/cmd_pos";
     public string rightTopic = "/right_motor/cmd_pos";
 
-    [Header("Σύμβαση γωνιών - ρύθμισε αν κάποιο χέρι στρίβει ανάποδα")]
+    [Header("Angle convention - adjust if an arm turns the wrong way")]
     public float leftSign  = 1f;
     public float rightSign = 1f;
     public float leftOffsetDeg  = 0f;
     public float rightOffsetDeg = 0f;
 
-    [Header("Self-test (χωρίς ROS): sweep για να δεις ότι ΔΕΝ σπάει")]
-    public float selfTestSweepDeg = 0f;   // π.χ. 8
+    [Header("Self-test (without ROS): sweep to check that it does NOT break")]
+    public float selfTestSweepDeg = 0f;   // e.g. 8
     public float selfTestPeriod   = 4f;
 
-    [Header("Physics tuning (εφαρμόζεται στο Awake)")]
-    public float fixedDt   = 0.002f;      // 500 Hz - σταθερότητα κλειστού βρόχου (Gazebo: 1ms)
+    [Header("Physics tuning (applied in Awake)")]
+    public float fixedDt   = 0.002f;      // 500 Hz - closed-loop stability (Gazebo: 1ms)
     public int   solverIters = 60;
     public int   velIters    = 40;
 
-    [Header("Καταγραφή CSV (gap_mm = πόσο ανοίγει το κλείσιμο, πρέπει ~ 0)")]
+    [Header("CSV logging (gap_mm = how far the closure opens, should be ~ 0)")]
     public bool   logCsv = true;
     public string csvFileName = "unity_physics_log.csv";
     public float  logRateHz = 50f;
@@ -66,23 +66,23 @@ public class PantographPhysicsDrive : MonoBehaviour
         ee         = FindChild("end_effector_link");
         var leftArm = FindChild("left_arm");
         if (!leftCrank || !rightCrank || !rightArm || !ee || !leftArm)
-        { Debug.LogError("[PantographDrive] Δεν βρέθηκαν τα links. Έτρεξες το Setup; Είναι το script στο 'five_bar_mechanism';"); enabled = false; return; }
+        { Debug.LogError("[PantographDrive] Links not found. Did you run Setup? Is the script on 'five_bar_mechanism'?"); enabled = false; return; }
 
         leftCrankRb  = leftCrank.GetComponent<Rigidbody>();
         rightCrankRb = rightCrank.GetComponent<Rigidbody>();
         if (!leftCrankRb || !rightCrankRb)
-        { Debug.LogError("[PantographDrive] Οι cranks δεν έχουν Rigidbody - τρέξε πρώτα το Setup (Δρόμος B)."); enabled = false; return; }
+        { Debug.LogError("[PantographDrive] The cranks have no Rigidbody - run Setup first (Path B)."); enabled = false; return; }
         leftCrankRb.isKinematic = true;
         rightCrankRb.isKinematic = true;
 
-        // Άξονας περιστροφής κινητήρα = άξονας του elbow hinge (κάθετη του επιπέδου)
+        // Motor rotation axis = axis of the elbow hinge (plane normal)
         var elbow = leftArm.GetComponent<HingeJoint>();
         planeN = elbow != null ? leftArm.TransformDirection(elbow.axis).normalized : Vector3.up;
 
         leftHome  = leftCrankRb.rotation;
         rightHome = rightCrankRb.rotation;
 
-        // σημείο κλεισίματος στο δεξί χέρι (στο home συμπίπτει με το EE) -> για μέτρηση κενού
+        // closure point on the right arm (coincides with the EE at home) -> for measuring the gap
         tipLocalRight = rightArm.InverseTransformPoint(ee.position);
 
         var ros = ROSConnection.GetOrCreateInstance();
@@ -91,9 +91,9 @@ public class PantographPhysicsDrive : MonoBehaviour
 
         if (logCsv) OpenCsv();
         tStart = Time.time;
-        Debug.Log($"[PantographDrive] Έτοιμο (Δρόμος B). dt={Time.fixedDeltaTime*1000f:F1}ms, " +
+        Debug.Log($"[PantographDrive] Ready (Path B). dt={Time.fixedDeltaTime*1000f:F1}ms, " +
                   $"solver={Physics.defaultSolverIterations}/{Physics.defaultSolverVelocityIterations}. " +
-                  (selfTestSweepDeg > 0f ? "Self-test ΕΝΕΡΓΟ." : "Περιμένω ROS."));
+                  (selfTestSweepDeg > 0f ? "Self-test ACTIVE." : "Waiting for ROS."));
     }
 
     void FixedUpdate()
@@ -107,7 +107,7 @@ public class PantographPhysicsDrive : MonoBehaviour
         float qL = qLeft  * leftSign  + leftOffsetDeg  * Mathf.Deg2Rad;
         float qR = qRight * rightSign + rightOffsetDeg * Mathf.Deg2Rad;
 
-        // Οδήγησε τις κινηματικές μανιβέλες, τα δυναμικά χέρια + το loop closure ακολουθούν.
+        // Drive the kinematic cranks; the dynamic arms + the loop closure follow.
         leftCrankRb.MoveRotation(Quaternion.AngleAxis(qL * Mathf.Rad2Deg, planeN) * leftHome);
         rightCrankRb.MoveRotation(Quaternion.AngleAxis(qR * Mathf.Rad2Deg, planeN) * rightHome);
     }

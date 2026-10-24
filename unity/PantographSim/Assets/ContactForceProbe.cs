@@ -1,6 +1,6 @@
-// ContactForceProbe.cs - Διαβάζει τη δύναμη επαφής σε ένα δυναμικό σώμα (= FT αισθητήρας).
-// Μπαίνει στο end_effector_link (το βάζει αυτόματα ο PantographForceControl).
-// Force = world-space διάνυσμα δύναμης που δέχεται το σώμα από τις επαφές αυτό το βήμα.
+// ContactForceProbe.cs - Reads the contact force on a dynamic body (= FT sensor).
+// Goes on end_effector_link (PantographForceControl adds it automatically).
+// Force = world-space force vector the body receives from the contacts in this step.
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -11,8 +11,8 @@ public class ContactForceProbe : MonoBehaviour
 
     void OnCollisionStay(Collision c)
     {
-        // impulse = συνολική ώθηση που εφαρμόστηκε για να λυθεί η επαφή (world space).
-        // Δύναμη ~ impulse / dt.
+        // impulse = total impulse applied to resolve the contact (world space).
+        // Force ~ impulse / dt.
         Force = c.impulse / Mathf.Max(Time.fixedDeltaTime, 1e-6f);
         InContact = true;
     }

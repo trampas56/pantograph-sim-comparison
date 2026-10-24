@@ -17,7 +17,7 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Τράμπας Ελευθέριος',
+    maintainer='Eleftherios Trampas',
     maintainer_email='trampasleuteris@gmail.com',
     description='Pantograph 5-bar mechanism Webots simulation',
     license='Apache-2.0',

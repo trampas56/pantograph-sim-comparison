@@ -16,7 +16,7 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Τράμπας Ελευθέριος',
+    maintainer='Eleftherios Trampas',
     maintainer_email='trampasleuteris@gmail.com',
     description='MuJoCo Pantograph Bot ROS 2 Package',
     license='Apache-2.0',

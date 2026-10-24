@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-# ForceControl.py - Έλεγχος Σταθερής Δύναμης Επαφής (Προσέγγιση Β: φυσικός τοίχος + FT αισθητήρας).
+# ForceControl.py - Constant contact force control (Approach B: physical wall + FT sensor).
 #
-# Ροή πειράματος:
-#   1) Φάση σταθεροποίησης (t < SETTLE_T): position hold στο Home (impedance X & Y).
-#   2) Φάση δύναμης (t >= SETTLE_T): εφαρμογή ΣΤΑΘΕΡΗΣ δύναμης κατά +X (προς τον τοίχο),
-#      με ομαλή ράμπα. Ο άξονας X είναι σε "force mode" (χωρίς stiffness) ώστε η δύναμη να
-#      οδηγεί το end-effector προς τον τοίχο, ο ΦΥΣΙΚΟΣ τοίχος (collision στο Gazebo) το σταματά.
-#      Ο άξονας Y παραμένει σε position hold (y = 0).
+# Experiment flow:
+#   1) Settling phase (t < SETTLE_T): position hold at Home (impedance X & Y).
+#   2) Force phase (t >= SETTLE_T): a CONSTANT force is applied along +X (towards the wall),
+#      with a smooth ramp. The X axis is in "force mode" (no stiffness) so that the force
+#      drives the end-effector towards the wall, and the PHYSICAL wall (collision in Gazebo) stops it.
+#      The Y axis stays in position hold (y = 0).
 #
-# Σύγκριση τριών δυνάμεων (καταγράφονται στο CSV):
-#   * F_des    : επιθυμητή δύναμη (setpoint, με ράμπα).
-#   * F_est    : εκτίμηση από εξισώσεις -> F_est = (J_world^T)^-1 * (τ_cmd - τ_friction).
-#   * F_sensor : πραγματική δύναμη από τον Force/Torque αισθητήρα στο end-effector (topic /ee_ft).
+# Three forces are compared (all logged to the CSV):
+#   * F_des    : desired force (setpoint, with ramp).
+#   * F_est    : estimate from the equations -> F_est = (J_world^T)^-1 * (τ_cmd - τ_friction).
+#   * F_sensor : actual force from the Force/Torque sensor at the end-effector (topic /ee_ft).
 
 import rclpy
 from rclpy.node import Node
@@ -30,7 +30,7 @@ from pantograph_pkg.Kinematics import joint_to_world, joint_to_kin, jacobian_wor
 
 
 class PantographForceController(Node):
-    """Ελεγκτής Σταθερής Δύναμης Επαφής για τον Παντογράφο."""
+    """Constant contact force controller for the pantograph."""
 
     def __init__(self):
         super().__init__('pantograph_force_controller')
@@ -45,64 +45,64 @@ class PantographForceController(Node):
             '/joint_states',
             self._joint_state_cb, 10)
 
-        # Πραγματική δύναμη επαφής από τον FT αισθητήρα στο end-effector
+        # Actual contact force from the FT sensor at the end-effector
         self.create_subscription(Wrench, '/ee_ft', self._ft_cb, 10)
 
-        # Επιθυμητή Δύναμη Επαφής
-        self.F_DES = 2.0      # N, σταθερή δύναμη προς τον τοίχο (+X). Ασφαλές εντός 0.1 Nm clamp.
-        self.SETTLE_T = 2.0    # s, διάρκεια φάσης σταθεροποίησης στο Home
-        self.RAMP_T = 1.0      # s, ομαλή ράμπα της δύναμης 0 -> F_DES
+        # Desired contact force
+        self.F_DES = 2.0      # N, constant force towards the wall (+X). Safe within the 0.1 Nm clamp.
+        self.SETTLE_T = 2.0    # s, duration of the settling phase at Home
+        self.RAMP_T = 1.0      # s, smooth force ramp 0 -> F_DES
 
-        # Παράμετροι Εμπέδησης (Stiffness K & Damping D)
-        self.K_x = 50.0        # N/m (μόνο στη φάση σταθεροποίησης)
-        self.K_y = 50.0        # N/m (position hold στον Y σε όλες τις φάσεις)
-        self.D_x = 25.0        # Ns/m (απόσβεση X: ήπια προσέγγιση ~F/D ~ 0.04 m/s & ευστάθεια επαφής)
+        # Impedance parameters (Stiffness K & Damping D)
+        self.K_x = 50.0        # N/m (settling phase only)
+        self.K_y = 50.0        # N/m (position hold on Y in all phases)
+        self.D_x = 25.0        # Ns/m (X damping: gentle approach ~F/D ~ 0.04 m/s & contact stability)
         self.D_y = 5.0         # Ns/m
 
-        # Στόχοι (Home) και Όρια
+        # Targets (Home) and limits
         self.home_x, self.home_y = HOME_WORLD
-        self.MAX_TORQUE = 0.1  # Ασφαλές όριο ροπής (Nm)
+        self.MAX_TORQUE = 0.1  # Safe torque limit (Nm)
 
-        # Γεωμετρία Τοίχου (για ανίχνευση επαφής) - ΠΡΕΠΕΙ να συμφωνεί με το .wbt
-        # Ο τοίχος είναι Box στο x=0.145 με μισό πλάτος 0.025 -> μπροστινή όψη στο x=0.120.
-        # Η σφαίρα του end-effector έχει ακτίνα 0.015. Επαφή όταν x_ee + r >= όψη τοίχου.
+        # Wall geometry (for contact detection) - MUST match the .wbt
+        # The wall is a Box at x=0.145 with half-width 0.025 -> front face at x=0.120.
+        # The end-effector sphere has radius 0.015. Contact when x_ee + r >= wall face.
         self.WALL_FACE_X = 0.120
         self.EE_RADIUS   = 0.015
-        self.CONTACT_X   = self.WALL_FACE_X - self.EE_RADIUS  # 0.105 m (κέντρο EE στην επαφή)
+        self.CONTACT_X   = self.WALL_FACE_X - self.EE_RADIUS  # 0.105 m (EE centre at contact)
 
         # Joint Friction/Damping Feedforward
         self.b_visc = 0.01   # damping  -> +b*dq
         self.f_coul = 0.01   # friction -> +f*tanh(dq/v_eps)
         self.v_eps  = 0.05
 
-        # Φίλτρο Ταχυτήτων (EMA)
+        # Velocity filter (EMA)
         self.vel_alpha = 0.8
         self.dq_left_f = 0.0
         self.dq_right_f = 0.0
 
-        # Φίλτρο σήματος αισθητήρα (EMA)
-        # SENSOR_SIGN: ευθυγράμμιση προσήμου ώστε η δύναμη επαφής (προς τον τοίχο) να είναι θετική.
-        # Επιβεβαιώνεται κατά το verification, flip σε -1.0 αν χρειαστεί.
+        # Sensor signal filter (EMA)
+        # SENSOR_SIGN: sign alignment so that the contact force (towards the wall) is positive.
+        # Confirmed during verification, flip to -1.0 if needed.
         self.SENSOR_SIGN = 1.0
         self.ft_alpha = 0.7
         self.f_sensor_x = 0.0
         self.f_sensor_y = 0.0
 
-        # Κατάσταση Ρομπότ
+        # Robot state
         self.q_left = 0.0
         self.q_right = 0.0
         self.dq_left = 0.0
         self.dq_right = 0.0
         self.received_feedback = False
 
-        # Χρονισμός
+        # Timing
         self.start_time = time.time()
         self.t0 = None
         self.dt = 0.01  # 100 Hz
         self.timer = self.create_timer(self.dt, self._control_loop)
 
         # Logging
-        # Ανοίγουμε το αρχείο εξαρχής για να γράφουμε ζωντανά!
+        # Open the file up front so we write live!
         self.log_filename = os.path.join(
             os.path.expanduser('~'), 'Desktop', 'pantograph', 'webots',
             'webots_force_log.csv'
@@ -137,13 +137,13 @@ class PantographForceController(Node):
                 self.dq_right = msg.velocity[i] if msg.velocity else 0.0
 
     def _ft_cb(self, msg: Wrench):
-        """Πραγματική δύναμη επαφής (φιλτραρισμένη με EMA για το plot)."""
-        # Το Webots getForceFeedback() επιστρέφει NaN στο πρώτο βήμα! Πρέπει να το αγνοήσουμε.
+        """Actual contact force (EMA-filtered for the plot)."""
+        # Webots getForceFeedback() returns NaN on the first step! We have to ignore it.
         if math.isnan(msg.force.x) or math.isnan(msg.force.y):
             return
-        # Η TouchSensor του Webots επιστρέφει τιμές στο τοπικό της σύστημα, το οποίο περιστρέφεται.
-        # Επειδή ο τοίχος είναι κάθετος στον άξονα X, η συνολική δύναμη επαφής είναι πρακτικά η
-        # δύναμη κατά X (μετά από προβολή). Το μέτρο της (στο επίπεδο XY) ισούται με την X δύναμη.
+        # The Webots TouchSensor returns values in its local frame, which rotates.
+        # Since the wall is perpendicular to the X axis, the total contact force is practically the
+        # force along X (after projection). Its magnitude (in the XY plane) equals the X force.
         f_mag = math.sqrt(msg.force.x**2 + msg.force.y**2)
         fx = self.SENSOR_SIGN * f_mag
         fy = 0.0
@@ -151,7 +151,7 @@ class PantographForceController(Node):
         self.f_sensor_y = self.ft_alpha * self.f_sensor_y + (1.0 - self.ft_alpha) * fy
 
     def _get_desired_force(self, t):
-        """Επιθυμητή δύναμη F_des = [Fx, Fy] (N). Σταθερή +X με ομαλή ράμπα μετά τη σταθεροποίηση."""
+        """Desired force F_des = [Fx, Fy] (N). Constant +X with a smooth ramp after settling."""
         if t < self.SETTLE_T:
             return 0.0, 0.0
         ramp = min(1.0, (t - self.SETTLE_T) / self.RAMP_T)
@@ -163,42 +163,42 @@ class PantographForceController(Node):
                 self.get_logger().warn('Waiting for joint states from Gazebo...')
             return
 
-        # Χρόνος εκτέλεσης
+        # Elapsed time
         now = self.get_clock().now().nanoseconds * 1e-9
         if self.t0 is None:
             self.t0 = now
         t = now - self.t0
 
-        # 1) Τρέχουσα θέση end-effector σε World frame (FK)
+        # 1) Current end-effector position in the World frame (FK)
         x_ee, y_ee = joint_to_world(self.q_left, self.q_right)
 
-        # 2) Φιλτράρισμα ταχυτήτων (EMA)
+        # 2) Velocity filtering (EMA)
         self.dq_left_f = self.vel_alpha * self.dq_left_f + (1.0 - self.vel_alpha) * self.dq_left
         self.dq_right_f = self.vel_alpha * self.dq_right_f + (1.0 - self.vel_alpha) * self.dq_right
 
-        # 3) Ιακωβιανός σε World frame
+        # 3) Jacobian in the World frame
         th1, th2 = joint_to_kin(self.q_left, self.q_right)
         J_w = jacobian_world(th1, th2)
 
-        # 4) Ταχύτητα end-effector σε World: v_ee = J_world * dq
+        # 4) End-effector velocity in World: v_ee = J_world * dq
         dq_vec = np.array([self.dq_left_f, self.dq_right_f])
         v_ee = J_w @ dq_vec
         v_x, v_y = float(v_ee[0]), float(v_ee[1])
 
-        # 5) Επιθυμητή δύναμη (με ράμπα)
+        # 5) Desired force (with ramp)
         f_des_x, f_des_y = self._get_desired_force(t)
 
-        # 6) Νόμος ελέγχου Cartesian ανά φάση
+        # 6) Cartesian control law per phase
         if t < self.SETTLE_T:
-            # Φάση σταθεροποίησης: position hold στο Home (impedance X & Y)
+            # Settling phase: position hold at Home (impedance X & Y)
             fx = self.K_x * (self.home_x - x_ee) - self.D_x * v_x
             fy = self.K_y * (self.home_y - y_ee) - self.D_y * v_y
         else:
-            # Φάση δύναμης: X = force mode (σταθερή δύναμη + απόσβεση), Y = position hold στο 0
+            # Force phase: X = force mode (constant force + damping), Y = position hold at 0
             fx = f_des_x - self.D_x * v_x
             fy = self.K_y * (0.0 - y_ee) - self.D_y * v_y + f_des_y
 
-        # 7) Μετατροπή σε Ροπές: τ = J_world^T * F + friction feedforward
+        # 7) Conversion to torques: τ = J_world^T * F + friction feedforward
         F_vec = np.array([fx, fy])
         tau = J_w.T @ F_vec
         tau_fric_l = self.b_visc * self.dq_left_f + self.f_coul * math.tanh(self.dq_left_f / self.v_eps)
@@ -206,18 +206,18 @@ class PantographForceController(Node):
         tau_left = float(tau[0]) + tau_fric_l
         tau_right = float(tau[1]) + tau_fric_r
 
-        # 8) Περιορισμός (Clamp)
+        # 8) Limit (clamp)
         tau_left = max(-self.MAX_TORQUE, min(self.MAX_TORQUE, tau_left))
         tau_right = max(-self.MAX_TORQUE, min(self.MAX_TORQUE, tau_right))
 
-        # 9) Αποστολή στο Gazebo
+        # 9) Send to Gazebo
         msg_l = Float64(); msg_l.data = tau_left
         msg_r = Float64(); msg_r.data = tau_right
         self.pub_left.publish(msg_l)
         self.pub_right.publish(msg_r)
 
-        # 10) Εκτιμώμενη δύναμη από εξισώσεις: F_est = (J_world^T)^-1 (τ_cmd - τ_friction)
-        #     Αφαιρούμε το friction feedforward ώστε το F_est να αντικατοπτρίζει τη δύναμη στο EE.
+        # 10) Force estimated from the equations: F_est = (J_world^T)^-1 (τ_cmd - τ_friction)
+        #     We subtract the friction feedforward so that F_est reflects the force at the EE.
         tau_for_est = np.array([tau_left - tau_fric_l, tau_right - tau_fric_r])
         try:
             F_est = np.linalg.solve(J_w.T, tau_for_est)
@@ -225,17 +225,17 @@ class PantographForceController(Node):
         except np.linalg.LinAlgError:
             f_est_x, f_est_y = 0.0, 0.0
 
-        # 10b) ΠΡΑΓΜΑΤΙΚΗ ΔΥΝΑΜΗ ΕΠΑΦΗΣ.
-        #   Ο Webots force/force-3d TouchSensor επιστρέφει 0 σε αυτή την έκδοση (R2025a snap)
-        #   ακόμη κι όταν υπάρχει επαφή (επιβεβαιωμένο: η επαφή ανιχνεύεται, αλλά η δύναμη όχι).
-        #   Επειδή στην επαφή το EE είναι σε στατική ισορροπία, η δύναμη που ασκεί το EE
-        #   (= F_est από το ισοζύγιο ροπών) ισούται με την αντίδραση του τοίχου. Έτσι η
-        #   πραγματική δύναμη επαφής = F_est, ενεργή ΜΟΝΟ όσο η σφαίρα ακουμπά τον τοίχο.
+        # 10b) ACTUAL CONTACT FORCE.
+        #   The Webots force/force-3d TouchSensor returns 0 in this version (R2025a snap)
+        #   even when there is contact (confirmed: the contact is detected, but the force is not).
+        #   Since the EE is in static equilibrium at contact, the force the EE applies
+        #   (= F_est from the torque balance) equals the reaction of the wall. So the
+        #   actual contact force = F_est, active ONLY while the sphere touches the wall.
         in_contact = (x_ee + self.EE_RADIUS) >= (self.WALL_FACE_X - 0.0005)
         f_contact_x = max(0.0, f_est_x) if in_contact else 0.0
         f_contact_y = 0.0
 
-        # 11) Καταγραφή δεδομένων (Ζωντανή εγγραφή στο CSV)
+        # 11) Data logging (live writing to the CSV)
         self.csv_writer.writerow([
             t, x_ee, y_ee, v_x, v_y,
             f_des_x, f_des_y, fx, fy,
@@ -245,10 +245,10 @@ class PantographForceController(Node):
             tau_left, tau_right
         ])
         self.log_counter += 1
-        if self.log_counter % 10 == 0:  # Κάθε 10 βήματα (10 Hz) κάνουμε flush στον δίσκο
+        if self.log_counter % 10 == 0:  # Flush to disk every 10 steps (10 Hz)
             self.log_file.flush()
 
-        # Εκτύπωση κατάστασης ανά ~1 s
+        # Print the status every ~1 s
         if int(t * 100) % 100 == 0:
             phase = 'SETTLE' if t < self.SETTLE_T else 'FORCE'
             contact_tag = 'CONTACT' if in_contact else 'free   '
@@ -259,7 +259,7 @@ class PantographForceController(Node):
             )
 
     def save_log(self):
-        # Απλώς κλείνουμε το αρχείο όταν τερματίσει το node
+        # Just close the file when the node shuts down
         if hasattr(self, 'log_file') and not self.log_file.closed:
             self.log_file.flush()
             self.log_file.close()

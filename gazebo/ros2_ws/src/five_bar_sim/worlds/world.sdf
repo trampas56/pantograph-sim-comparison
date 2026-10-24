@@ -11,7 +11,7 @@
             name="gz::sim::systems::SceneBroadcaster"/>
     <plugin filename="gz-sim-sensors-system"
             name="gz::sim::systems::Sensors"/>
-    <!-- Force/Torque sensor system (απαιτείται για τον FT αισθητήρα στο end-effector) -->
+    <!-- Force/Torque sensor system (required for the FT sensor at the end-effector) -->
     <plugin filename="gz-sim-forcetorque-system"
             name="gz::sim::systems::ForceTorque"/>
 
@@ -33,10 +33,10 @@
       </dart>
     </physics>
 
-    <!-- Εικονικός Τοίχος (Beige Block) στη θέση x = 0.120 -->
+    <!-- Virtual Wall (Beige Block) at x = 0.120 -->
     <model name="virtual_wall">
       <static>true</static>
-      <!-- Τοποθέτηση στο x = 0.145. Με πάχος 0.05, η επιφάνεια επαφής είναι ακριβώς στο x = 0.120 -->
+      <!-- Placed at x = 0.145. With a thickness of 0.05, the contact surface is exactly at x = 0.120 -->
       <pose>0.145 0.0 0.04 0 0 0</pose>
       <link name="link">
         <visual name="visual">
@@ -46,12 +46,12 @@
             </box>
           </geometry>
           <material>
-            <ambient>0.96 0.96 0.86 1.0</ambient> <!-- Μπεζ χρώμα -->
+            <ambient>0.96 0.96 0.86 1.0</ambient> <!-- Beige colour -->
             <diffuse>0.96 0.96 0.86 1.0</diffuse>
             <specular>0.2 0.2 0.2 1.0</specular>
           </material>
         </visual>
-        <!-- Collision: ίδιο box με το visual. Μπροστινή όψη στο x = 0.120 (φυσική επαφή). -->
+        <!-- Collision: same box as the visual. Front face at x = 0.120 (physical contact). -->
         <collision name="collision">
           <geometry>
             <box>

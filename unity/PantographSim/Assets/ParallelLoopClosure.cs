@@ -1,16 +1,16 @@
-// ParallelLoopClosure.cs - Runtime controller για τον five-bar στο Unity.
-// Οδηγεί τους δύο κινητήρες από τις εντολές θέσης του ROS 2
-//   /left_motor/cmd_pos , /right_motor/cmd_pos   (Float64, rad - q=0 στο home),
-// όπως οι sims Gazebo / MuJoCo / Webots, και καταγράφει CSV για γραφικές.
+// ParallelLoopClosure.cs - Runtime controller for the five-bar in Unity.
+// Drives the two motors from the ROS 2 position commands
+//   /left_motor/cmd_pos , /right_motor/cmd_pos   (Float64, rad - q=0 at home),
+// like the Gazebo / MuJoCo / Webots sims, and logs a CSV for plots.
 //
-// ΚΛΕΙΣΙΜΟ ΒΡΟΧΟΥ - ΑΝΑΛΥΤΙΚΑ (εγγυημένα ενωμένα χέρια):
-//   Το PhysX είναι αναξιόπιστο σε κλειστούς βρόχους ΚΑΙ το URDF έχει λάθος home pose
-//   (το δεξί χέρι δεν φτάνει το EE). Γι' αυτό αγνοούμε το home του URDF και υπολογίζουμε
-//   τη ΣΩΣΤΗ κλειστή διάταξη: με τα πραγματικά μήκη χεριών (0.12) και τις θέσεις των
-//   αγκώνων (από τους cranks), βρίσκουμε το EE ως τομή δύο κύκλων και στρέφουμε τα δύο
-//   χέρια να δείχνουν εκεί -> οι άκρες τους ΣΥΜΠΙΠΤΟΥΝ. Όλα τα bodies γίνονται kinematic.
+// LOOP CLOSURE - ANALYTICAL (arms guaranteed to stay joined):
+//   PhysX is unreliable with closed loops AND the URDF has a wrong home pose
+//   (the right arm does not reach the EE). So we ignore the URDF home and compute
+//   the CORRECT closed configuration: with the actual arm lengths (0.12) and the
+//   elbow positions (from the cranks), we find the EE as the intersection of two circles and turn the two
+//   arms to point there -> their tips COINCIDE. All bodies become kinematic.
 //
-// ΤΟΠΟΘΕΤΗΣΗ: στο root GameObject 'five_bar_mechanism'.
+// PLACEMENT: on the root GameObject 'five_bar_mechanism'.
 using System.IO;
 using UnityEngine;
 using Unity.Robotics.ROSTCPConnector;
@@ -22,17 +22,17 @@ public class PantographController : MonoBehaviour
     public string leftTopic  = "/left_motor/cmd_pos";
     public string rightTopic = "/right_motor/cmd_pos";
 
-    [Header("Σύμβαση γωνιών - ρύθμισε αν κάποιο χέρι στρίβει ανάποδα")]
+    [Header("Angle convention - adjust if an arm turns the wrong way")]
     public float leftSign  = 1f;
     public float rightSign = 1f;
     public float leftOffsetDeg  = 0f;
     public float rightOffsetDeg = 0f;
 
-    [Header("Self-test (χωρίς ROS): sweep για να δεις την κίνηση)")]
-    public float selfTestSweepDeg = 0f;   // π.χ. 20
+    [Header("Self-test (without ROS): sweep to see the motion")]
+    public float selfTestSweepDeg = 0f;   // e.g. 20
     public float selfTestPeriod   = 4f;
 
-    [Header("Καταγραφή CSV")]
+    [Header("CSV logging")]
     public bool   logCsv = true;
     public string csvFileName = "unity_trajectory_log.csv";
     public float  logRateHz = 50f;
@@ -41,7 +41,7 @@ public class PantographController : MonoBehaviour
     Quaternion leftHome, rightHome, leftArmHome, rightArmHome;
     Vector3 leftAxisW, rightAxisW, planeN, refCenter;
 
-    Vector3 tipLocal, armDirLHome, armDirRHome;   // για τον αναλυτικό solver
+    Vector3 tipLocal, armDirLHome, armDirRHome;   // for the analytical solver
     float armLen;
 
     float qLeft, qRight;
@@ -59,7 +59,7 @@ public class PantographController : MonoBehaviour
         rightArm   = FindChild("right_arm");
         ee         = FindChild("end_effector_link");
         if (!baseLink || !leftCrank || !rightCrank || !leftArm || !rightArm || !ee)
-        { Debug.LogError("[Pantograph] Δεν βρέθηκαν τα links. Βάλε το script στο 'five_bar_mechanism'."); enabled = false; return; }
+        { Debug.LogError("[Pantograph] Links not found. Put the script on 'five_bar_mechanism'."); enabled = false; return; }
 
         foreach (var t in new[] { baseLink, leftCrank, rightCrank, leftArm, rightArm, ee })
         {
@@ -75,13 +75,13 @@ public class PantographController : MonoBehaviour
         rightAxisW = JointAxisWorld(rightCrank);
         planeN = leftAxisW;
 
-        // ΠΡΑΓΜΑΤΙΚΟ μήκος χεριού + τοπική άκρη της βέργας (το EE είναι άκαμπτα στην άκρη του αριστερού χεριού)
+        // ACTUAL arm length + local tip of the rod (the EE sits rigidly at the tip of the left arm)
         tipLocal = leftArm.InverseTransformPoint(ee.position);   // |tipLocal| = 0.12
         armLen   = tipLocal.magnitude;
-        // πραγματικές διευθύνσεις βέργας στο home (όχι προς το χαλασμένο EE)
+        // actual rod directions at home (not towards the broken EE)
         armDirLHome = (leftArm.TransformPoint(tipLocal)  - leftArm.position).normalized;
         armDirRHome = (rightArm.TransformPoint(tipLocal) - rightArm.position).normalized;
-        // κέντρο αναφοράς = μέσο των δύο κινητήρων (για επιλογή της σωστής τομής κύκλων)
+        // reference centre = midpoint of the two motors (to pick the correct circle intersection)
         refCenter = (leftCrank.position + rightCrank.position) * 0.5f;
 
         var ros = ROSConnection.GetOrCreateInstance();
@@ -90,8 +90,8 @@ public class PantographController : MonoBehaviour
 
         if (logCsv) OpenCsv();
         tStart = Time.time;
-        Debug.Log($"[Pantograph] Έτοιμο. armLen={armLen:F4} (πρέπει ~0.12). " +
-                  (selfTestSweepDeg > 0f ? "Self-test ΕΝΕΡΓΟ." : "Περιμένω ROS."));
+        Debug.Log($"[Pantograph] Ready. armLen={armLen:F4} (should be ~0.12). " +
+                  (selfTestSweepDeg > 0f ? "Self-test ACTIVE." : "Waiting for ROS."));
     }
 
     void Update()
@@ -105,25 +105,25 @@ public class PantographController : MonoBehaviour
         float qL = qLeft  * leftSign  + leftOffsetDeg  * Mathf.Deg2Rad;
         float qR = qRight * rightSign + rightOffsetDeg * Mathf.Deg2Rad;
 
-        // 1) γύρνα τους cranks στις εντολές
+        // 1) turn the cranks to the commands
         leftCrank.rotation  = Quaternion.AngleAxis(qL * Mathf.Rad2Deg, leftAxisW)  * leftHome;
         rightCrank.rotation = Quaternion.AngleAxis(qR * Mathf.Rad2Deg, rightAxisW) * rightHome;
 
-        // 2) θέσεις αγκώνων (από τους cranks)
+        // 2) elbow positions (from the cranks)
         Vector3 pa = leftArm.position, pb = rightArm.position;
 
-        // 3) τομή δύο κύκλων ΙΔΙΑΣ ακτίνας armLen -> η ΣΩΣΤΗ κλειστή θέση του EE
+        // 3) intersection of two circles of the SAME radius armLen -> the CORRECT closed EE position
         Vector3 dv = pb - pa; float d = Mathf.Max(dv.magnitude, 1e-6f);
-        float aDist = d * 0.5f;                          // ίσες ακτίνες -> μέσο
+        float aDist = d * 0.5f;                          // equal radii -> midpoint
         float h2 = armLen * armLen - aDist * aDist;
         float h = h2 > 0f ? Mathf.Sqrt(h2) : 0f;
         Vector3 m = pa + (aDist / d) * dv;
         Vector3 perp = Vector3.Cross(planeN, dv).normalized;
         Vector3 cand1 = m + h * perp, cand2 = m - h * perp;
-        // διάλεξε την τομή που είναι ΜΑΚΡΥΤΕΡΑ από το κέντρο των κινητήρων (η πλευρά εργασίας)
+        // pick the intersection that is FARTHER from the centre of the motors (the working side)
         Vector3 eePos = (cand1 - refCenter).sqrMagnitude >= (cand2 - refCenter).sqrMagnitude ? cand1 : cand2;
 
-        // 4) στρίψε τα χέρια να δείχνουν στο EE -> οι άκρες συμπίπτουν εκεί
+        // 4) turn the arms to point at the EE -> their tips coincide there
         leftArm.rotation  = Quaternion.FromToRotation(armDirLHome, (eePos - pa).normalized) * leftArmHome;
         rightArm.rotation = Quaternion.FromToRotation(armDirRHome, (eePos - pb).normalized) * rightArmHome;
         ee.position = eePos;
@@ -137,7 +137,7 @@ public class PantographController : MonoBehaviour
         if (!logCsv || csv == null || Time.time - lastLog < 1f / Mathf.Max(1f, logRateHz)) return;
         lastLog = Time.time;
         Vector3 e = baseLink.InverseTransformPoint(ee.position);
-        // κενό = απόσταση άκρης δεξιού χεριού από το EE (πρέπει ~ 0)
+        // gap = distance of the right arm tip from the EE (should be ~ 0)
         float gapMm = Vector3.Distance(rightArm.TransformPoint(tipLocal), ee.position) * 1000f;
         csv.WriteLine($"{Time.time - tStart:F4},{qLeft:F6},{qRight:F6},{e.x:F6},{e.y:F6},{e.z:F6},{gapMm:F3}");
     }

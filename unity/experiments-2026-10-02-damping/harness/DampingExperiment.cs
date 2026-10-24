@@ -1,7 +1,7 @@
-// DampingExperiment.cs - ΠΕΙΡΑΜΑ (μόνο στο scratch αντίγραφο, όχι στο project).
-// Για κάθε (c = motorAngularDamping, dt = fixedDeltaTime, F = targetForceN) τρέχει Play,
-// και μετρά μέσες τιμές F_est και F_sensor (contactF) στο διάστημα [avgFrom, simSec].
-// Εκτέλεση: Unity -batchmode -nographics -projectPath ... -executeMethod DampingExperiment.Run
+// DampingExperiment.cs - EXPERIMENT (only in the scratch copy, not in the project).
+// For each (c = motorAngularDamping, dt = fixedDeltaTime, F = targetForceN) it runs Play,
+// and measures the mean F_est and F_sensor (contactF) over the interval [avgFrom, simSec].
+// Run: Unity -batchmode -nographics -projectPath ... -executeMethod DampingExperiment.Run
 // env: EXP_CFGS="40:0.002:2,40:0.001:2"  EXP_SIM_SEC=8  EXP_OUT=/path/results.csv
 using System;
 using System.Collections.Generic;
@@ -23,7 +23,7 @@ public static class DampingExperiment
     public static void Run()
     {
         string spec = Environment.GetEnvironmentVariable("EXP_CFGS") ?? "40:0.002:2,40:0.001:2";
-        if (spec == "asis") cfgs.Add((float.NaN, float.NaN, float.NaN));   // σκηνή όπως είναι, χωρίς αλλαγές
+        if (spec == "asis") cfgs.Add((float.NaN, float.NaN, float.NaN));   // scene as it is, no changes
         else foreach (var s in spec.Split(','))
         {
             var p = s.Split(':');
@@ -33,7 +33,7 @@ public static class DampingExperiment
         outPath = Environment.GetEnvironmentVariable("EXP_OUT") ?? Path.GetFullPath("exp_results.csv");
         File.WriteAllText(outPath, "c,dt_ms,F_target,c_dt,dt_runtime_ms,F_est,F_sensor,F_sensor_std,ratio,pred_1_minus_c_dt,n\n");
 
-        // χωρίς domain reload -> τα static (λίστα, δείκτης) επιβιώνουν από το Play
+        // no domain reload -> the statics (list, index) survive Play
         EditorSettings.enterPlayModeOptionsEnabled = true;
         EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
         EditorApplication.playModeStateChanged += OnState;
@@ -57,7 +57,7 @@ public static class DampingExperiment
         fc.targetForceN = f;
         fc.startDelaySec = 0f;
         fc.csvFileName = csvName;
-        if (pd) pd.fixedDt = dt;   // ίδιο dt και στα δύο Awake -> δεν παίζει ρόλο η σειρά τους
+        if (pd) pd.fixedDt = dt;   // same dt in both Awake calls -> their order does not matter
         if (Environment.GetEnvironmentVariable("EXP_IMPACT") == "1")
             GameObject.Find("end_effector_link").AddComponent<ImpactLogger>().fileName = $"impact_{idx}.csv";
         stopping = false;

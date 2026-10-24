@@ -1,41 +1,41 @@
-// PantographForceControl.cs - ΔΡΟΜΟΣ B, Phase 2β: έλεγχος ΔΥΝΑΜΗΣ με Ιακωβιανό.
+// PantographForceControl.cs - PATH B, Phase 2b: FORCE control with the Jacobian.
 //
-// Ιδέα (ρομποτική): θέλουμε δύναμη F στο τελικό σημείο (EE) προς τον τοίχο.
-//   F_cmd = F_target * d_hat            (d_hat = κατεύθυνση προς τοίχο, ομαλό ξεκίνημα με ramp)
-//   τ     = J^T * F_cmd               (ροπές κινητήρων, J = Ιακωβιανός ζωντανά)
-// Το EE σπρώχνει, λόγω φυσικής δεν περνά τον τοίχο -> ισορροπεί πιέζοντας με F_target.
+// Idea (robotics): we want a force F at the end point (EE) towards the wall.
+//   F_cmd = F_target * d_hat            (d_hat = direction towards the wall, smooth start with a ramp)
+//   τ     = J^T * F_cmd               (motor torques, J = Jacobian computed live)
+// The EE pushes, physics keeps it from passing through the wall -> it settles pressing with F_target.
 //
-// Σιγά-σιγά = ΑΠΟΣΒΕΣΗ μέσω angularDamping των κινητήρων (σταθερή στο PhysX),
-// ΟΧΙ explicit -b*v (που ήταν ασταθές). Στην ισορροπία ω=0, αλλά το PhysX πολλαπλασιάζει
-// την ταχύτητα με (1-c*Δt) ΑΦΟΥ προσθέσει τη ροπή -> ο αισθητήρας δίνει F*(1-c*Δt)
-// (c=40, Δt=2 ms -> x0.92, π.χ. 1.475 -> 1.356 N, με Δt=1 ms -> x0.96).
+// Slowly = DAMPING through the motors' angularDamping (stable in PhysX),
+// NOT an explicit -b*v (which was unstable). At equilibrium ω=0, but PhysX multiplies
+// the velocity by (1-c*Δt) AFTER adding the torque -> the sensor reads F*(1-c*Δt)
+// (c=40, Δt=2 ms -> x0.92, e.g. 1.475 -> 1.356 N, with Δt=1 ms -> x0.96).
 //
-// Κάνει τους κινητήρες ΔΥΝΑΜΙΚΟΥΣ + HingeJoint στη βάση, και αυξάνει αδράνεια/μάζα
-// για ΣΤΑΘΕΡΗ δυναμική (δεν αλλάζει τη στατική ισορροπία 1 N). Loop closure + projection
-// ΜΕΝΟΥΝ -> δεν σπάει.
+// Makes the motors DYNAMIC + HingeJoint to the base, and increases inertia/mass
+// for STABLE dynamics (it does not change the 1 N static equilibrium). Loop closure + projection
+// STAY -> it does not break.
 //
-// ΤΟΠΟΘΕΤΗΣΗ: στο root 'five_bar_mechanism'. Πρέπει να έχει μπει ο τοίχος.
+// PLACEMENT: on the root 'five_bar_mechanism'. The wall must already be added.
 using System.Collections;
 using System.IO;
 using UnityEngine;
 
 public class PantographForceControl : MonoBehaviour
 {
-    [Header("Εντολή δύναμης στο EE")]
-    public float targetForceN = 1.0f;     // δύναμη προς τον τοίχο
-    public float forceRampSec = 3.0f;     // 0 -> target (ομαλό ξεκίνημα)
-    public float startDelaySec = 3.0f;    // αναμονή μετά το Play πριν ξεκινήσει ο έλεγχος (0 = αμέσως)
+    [Header("Force command at the EE")]
+    public float targetForceN = 1.0f;     // force towards the wall
+    public float forceRampSec = 3.0f;     // 0 -> target (smooth start)
+    public float startDelaySec = 3.0f;    // wait after Play before the control starts (0 = immediately)
 
-    [Header("Σιγά-σιγά: απόσβεση κινητήρων (σταθερή)")]
-    public float motorAngularDamping = 40f;   // μεγαλύτερο = πιο αργή/σταθερή προσέγγιση
+    [Header("Slowly: motor damping (stable)")]
+    public float motorAngularDamping = 40f;   // larger = slower/more stable approach
 
-    [Header("Σταθερότητα δυναμικής (δεν αλλάζει την ισορροπία)")]
-    public float bodyMass    = 0.10f;     // μάζα κινούμενων links
-    public float bodyInertia = 0.005f;    // inertiaTensor (αντικαθιστά το 1e-4 του setup)
-    public float maxTorque   = 0.1f;      // όριο ροπής κινητήρα (Nm) - ΙΔΙΟ με Gazebo MAX_TORQUE -> κορεσμός ~1.4N
+    [Header("Dynamics stability (does not change the equilibrium)")]
+    public float bodyMass    = 0.10f;     // mass of the moving links
+    public float bodyInertia = 0.005f;    // inertiaTensor (replaces the 1e-4 of the setup)
+    public float maxTorque   = 0.1f;      // motor torque limit (Nm) - SAME as Gazebo MAX_TORQUE -> saturation ~1.4N
 
     [Header("Physics tuning (Awake)")]
-    public float fixedDt = 0.002f;        // 2 ms (500 Hz), όπως οι μετρήσεις της διπλωματικής (1.356 N στα 2 N)
+    public float fixedDt = 0.002f;        // 2 ms (500 Hz), as in the thesis measurements (1.356 N at 2 N)
     public int   solverIters = 100, velIters = 50;
 
     [Header("CSV + logging")]
@@ -55,7 +55,7 @@ public class PantographForceControl : MonoBehaviour
     Vector3 tipLocalRight;
 
     float tStart, lastLog = -999f, lastConsole = -999f;
-    bool running;                         // false όσο περιμένει το startDelaySec
+    bool running;                         // false while waiting for startDelaySec
     StreamWriter csv;
 
     void Awake()
@@ -69,32 +69,32 @@ public class PantographForceControl : MonoBehaviour
 
     IEnumerator Start()
     {
-        // Αναμονή: οι κινητήρες μένουν kinematic (όπως τους αφήνει το Setup) -> ο μηχανισμός
-        // μένει ακίνητος στο home. Το CSV/t=0 ξεκινούν μετά την αναμονή (ίδια γραφική με πριν).
+        // Waiting: the motors stay kinematic (as Setup leaves them) -> the mechanism
+        // stays still at home. The CSV/t=0 start after the wait (same plot as before).
         if (startDelaySec>0f)
         {
-            Debug.Log($"[ForceControl] Αναμονή {startDelaySec:F1}s πριν την εκκίνηση...");
+            Debug.Log($"[ForceControl] Waiting {startDelaySec:F1}s before starting...");
             yield return new WaitForSeconds(startDelaySec);
         }
 
         baseLink=Find("base_link"); leftCrank=Find("left_crank"); rightCrank=Find("right_crank");
         leftArm=Find("left_arm"); rightArm=Find("right_arm"); ee=Find("end_effector_link");
         if (!baseLink||!leftCrank||!rightCrank||!leftArm||!rightArm||!ee)
-        { Debug.LogError("[ForceControl] Λείπουν links - έτρεξες το Setup;"); enabled=false; yield break; }
+        { Debug.LogError("[ForceControl] Links missing - did you run Setup?"); enabled=false; yield break; }
         baseRb=baseLink.GetComponent<Rigidbody>();
         leftCrankRb=leftCrank.GetComponent<Rigidbody>(); rightCrankRb=rightCrank.GetComponent<Rigidbody>();
         eeRb=ee.GetComponent<Rigidbody>();
         if (!baseRb||!leftCrankRb||!rightCrankRb||!eeRb)
-        { Debug.LogError("[ForceControl] Λείπουν Rigidbody - τρέξε πρώτα το Setup."); enabled=false; yield break; }
+        { Debug.LogError("[ForceControl] Rigidbody missing - run Setup first."); enabled=false; yield break; }
 
-        // άξονες επιπέδου (ίδιοι με Setup/Wall)
+        // plane axes (same as Setup/Wall)
         planeN = Vector3.Cross(rightCrank.position-leftCrank.position, leftArm.position-leftCrank.position).normalized;
         if (planeN.sqrMagnitude<1e-9f) planeN=Vector3.up;
         refCenter = (leftCrank.position+rightCrank.position)*0.5f;
         uHat = Vector3.ProjectOnPlane(ee.position-refCenter, planeN).normalized;
         vHat = Vector3.Cross(planeN, uHat).normalized;
 
-        // 2D γεωμετρία στο home
+        // 2D geometry at home
         OL=P2(leftCrank.position); OR=P2(rightCrank.position);
         Vector2 eLh=P2(leftArm.position), eRh=P2(rightArm.position), Eh=P2(ee.position);
         crankLenL=(eLh-OL).magnitude; crankLenR=(eRh-OR).magnitude;
@@ -102,18 +102,18 @@ public class PantographForceControl : MonoBehaviour
         aL0=Mathf.Atan2(eLh.y-OL.y, eLh.x-OL.x);
         aR0=Mathf.Atan2(eRh.y-OR.y, eRh.x-OR.x);
 
-        // κατεύθυνση προς τον τοίχο
+        // direction towards the wall
         var wall=GameObject.Find("virtual_wall");
         if (wall!=null) dHatPlane=(P2(wall.transform.position)-Eh).normalized;
-        else { dHatPlane=new Vector2(1,0); Debug.LogWarning("[ForceControl] Δεν βρέθηκε 'virtual_wall' - σπρώχνω +reach."); }
+        else { dHatPlane=new Vector2(1,0); Debug.LogWarning("[ForceControl] 'virtual_wall' not found - pushing +reach."); }
         if (dHatPlane.sqrMagnitude<1e-9f) dHatPlane=new Vector2(1,0);
 
-        // ΣΤΑΘΕΡΟΤΗΤΑ: αύξησε αδράνεια/μάζα όλων των κινούμενων links
+        // STABILITY: increase the inertia/mass of all moving links
         foreach (var rb in new[]{leftCrankRb,rightCrankRb,leftArm.GetComponent<Rigidbody>(),
                                  rightArm.GetComponent<Rigidbody>(),eeRb})
         { rb.mass=bodyMass; rb.inertiaTensor=Vector3.one*bodyInertia; rb.centerOfMass=Vector3.zero; }
 
-        // κινητήρες -> torque mode (δυναμικοί + hinge στη βάση + απόσβεση)
+        // motors -> torque mode (dynamic + hinge to the base + damping)
         SetupMotor(leftCrankRb, leftCrank);
         SetupMotor(rightCrankRb, rightCrank);
 
@@ -121,7 +121,7 @@ public class PantographForceControl : MonoBehaviour
         if (eeProbe==null) eeProbe = ee.gameObject.AddComponent<ContactForceProbe>();
         tipLocalRight = rightArm.InverseTransformPoint(ee.position);
 
-        // ΔΙΑΓΝΩΣΤΙΚΟ κατεύθυνσης: για δύναμη +d_hat, αναμενόμενη κίνηση EE ~ J*J^T*d_hat -> πρέπει ~ +d_hat
+        // Direction DIAGNOSTIC: for a force +d_hat, the expected EE motion ~ J*J^T*d_hat -> must be ~ +d_hat
         const float h=1e-4f;
         Vector2 a=FK(h,0)-FK(-h,0), b=FK(0,h)-FK(0,-h);
         float j00=a.x/(2*h), j10=a.y/(2*h), j01=b.x/(2*h), j11=b.y/(2*h);
@@ -132,9 +132,9 @@ public class PantographForceControl : MonoBehaviour
         if (logCsv) OpenCsv();
         tStart=Time.time;
         running=true;
-        Debug.Log($"[ForceControl] Έτοιμο. target={targetForceN}N ramp={forceRampSec}s damping={motorAngularDamping} dt={Time.fixedDeltaTime*1000:F1}ms.\n" +
+        Debug.Log($"[ForceControl] Ready. target={targetForceN}N ramp={forceRampSec}s damping={motorAngularDamping} dt={Time.fixedDeltaTime*1000:F1}ms.\n" +
                   $"  J@home=[{j00:F4} {j01:F4}; {j10:F4} {j11:F4}]  dHat=({dHatPlane.x:F2},{dHatPlane.y:F2})  " +
-                  $"ALIGNMENT={align:F2} (πρέπει κοντά στο +1, αν είναι αρνητικό/μηδέν -> λάθος J).");
+                  $"ALIGNMENT={align:F2} (should be close to +1, if negative/zero -> wrong J).");
     }
 
     void SetupMotor(Rigidbody rb, Transform crank)
@@ -156,7 +156,7 @@ public class PantographForceControl : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (!running) return;             // ακόμα στην αναμονή (ή απέτυχε το setup)
+        if (!running) return;             // still waiting (or the setup failed)
         float qL=DeltaAngle(P2(leftArm.position),  OL, aL0);
         float qR=DeltaAngle(P2(rightArm.position), OR, aR0);
 
@@ -172,13 +172,13 @@ public class PantographForceControl : MonoBehaviour
         leftCrankRb.AddTorque(planeN*tauL, ForceMode.Force);
         rightCrankRb.AddTorque(planeN*tauR, ForceMode.Force);
 
-        // F_est = (J^T)^-1 * τ_clamped -> δύναμη που αντιστοιχεί στην ΕΦΑΡΜΟΣΜΕΝΗ (κομμένη) ροπή.
-        // Δείχνει τον κορεσμό όταν χτυπάει το maxTorque (όπως το F_est του Gazebo).
+        // F_est = (J^T)^-1 * τ_clamped -> force that corresponds to the APPLIED (clipped) torque.
+        // It shows the saturation when maxTorque is hit (like the Gazebo F_est).
         float det=j00*j11-j01*j10, fEst=0f;
         if (Mathf.Abs(det)>1e-9f)
         {
             float fx=( j11*tauL-j10*tauR)/det, fy=(-j01*tauL+j00*tauR)/det;
-            fEst=fx*dHatPlane.x+fy*dHatPlane.y;   // συνιστώσα προς τον τοίχο
+            fEst=fx*dHatPlane.x+fy*dHatPlane.y;   // component towards the wall
         }
 
         Log(framp, fEst, tauL, tauR);

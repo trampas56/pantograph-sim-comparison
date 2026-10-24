@@ -26,12 +26,12 @@ Robot {
       translation 0 0 0.01
       physics Physics { mass 0.5 density -1 }
       children [
-        # Βάση
+        # Base
         Shape {
           appearance PBRAppearance { baseColor 0.9 0.9 0.9 roughness 0.5 metalness 0 }
           geometry Box { size 0.20 0.20 0.005 }
         }
-        # Αριστερός Κινητήρας (Χρυσό κουτί + Άξονας)
+        # Left Motor (Gold box + Shaft)
         Transform {
           translation 0 0.04 0.03
           children [ Shape { appearance PBRAppearance { baseColor 0.8 0.6 0.2 roughness 0.4 metalness 0.8 } geometry Box { size 0.03 0.03 0.04 } } ]
@@ -40,7 +40,7 @@ Robot {
           translation 0 0.04 0.06
           children [ Shape { appearance PBRAppearance { baseColor 0.7 0.7 0.7 roughness 0.5 metalness 0.5 } geometry Cylinder { radius 0.005 height 0.02 } } ]
         }
-        # Δεξιός Κινητήρας (Χρυσό κουτί + Άξονας)
+        # Right Motor (Gold box + Shaft)
         Transform {
           translation 0 -0.04 0.03
           children [ Shape { appearance PBRAppearance { baseColor 0.8 0.6 0.2 roughness 0.4 metalness 0.8 } geometry Box { size 0.03 0.03 0.04 } } ]
@@ -161,7 +161,7 @@ Robot {
                       children [ Shape { appearance PBRAppearance { baseColor 0.75 0.75 0.75 roughness 0.1 metalness 0 } geometry Cylinder { radius 0.0125 height 0.002 } } ]
                     }
 
-                    # ΚΛΕΙΣΙΜΟ ΒΡΟΧΟΥ
+                    # LOOP CLOSURE
                     HingeJoint {
                       jointParameters HingeJointParameters { anchor 0.12 0 0 axis 0 0 1 }
                       endPoint SolidReference { solidName "ee_ft_sensor" }
@@ -176,7 +176,7 @@ Robot {
     }
   ]
 }
-# Ο τοίχος είναι ΕΚΤΟΣ Robot - κανονική σύγκρουση, χωρίς selfCollision
+# The wall is OUTSIDE the Robot - normal collision, no selfCollision
 Solid {
   name "wall"
   translation 0.145 0 0.04

@@ -31,9 +31,9 @@ def generate_launch_description():
         output='screen'
     )
 
-    # Γέφυρα για Torque Control:
-    # ROS 2 -> Gazebo: cmd_force topics για τους κινητήρες
-    # Gazebo -> ROS 2: joint_state για feedback (PD controller)
+    # Bridge for Torque Control:
+    # ROS 2 -> Gazebo: cmd_force topics for the motors
+    # Gazebo -> ROS 2: joint_state for feedback (PD controller)
     bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
@@ -41,7 +41,7 @@ def generate_launch_description():
             '/model/my_pantograph/joint/left_motor_joint/cmd_force@std_msgs/msg/Float64]gz.msgs.Double',
             '/model/my_pantograph/joint/right_motor_joint/cmd_force@std_msgs/msg/Float64]gz.msgs.Double',
             '/world/five_bar_world/model/my_pantograph/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
-            # Gazebo -> ROS 2: Force/Torque αισθητήρας στο end-effector (πραγματική δύναμη επαφής)
+            # Gazebo -> ROS 2: Force/Torque sensor at the end-effector (actual contact force)
             '/ee_ft@geometry_msgs/msg/Wrench[gz.msgs.Wrench',
         ],
         output='screen'

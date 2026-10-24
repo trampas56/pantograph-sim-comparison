@@ -112,7 +112,7 @@
       </axis>
     </joint>
 
-    <!-- END EFFECTOR (ανήκει στο αριστερό δέντρο) -->
+    <!-- END EFFECTOR (belongs to the left tree) -->
     <link name="end_effector_link">
       <pose>0.0898 0 0.062 0 0 0</pose>
       <inertial>
@@ -130,7 +130,7 @@
       </visual>
     </link>
 
-    <!-- end_effector ανήκει μόνο στο αριστερό χέρι (δέντρο χωρίς κύκλους) -->
+    <!-- end_effector belongs only to the left arm (a tree without cycles) -->
     <joint name="ee_left_joint" type="revolute">
       <parent>left_arm</parent>
       <child>end_effector_link</child>
@@ -142,8 +142,8 @@
     </joint>
 
     <!-- EE TIP + FORCE/TORQUE SENSOR (wrist FT) -->
-    <!-- Ελαφρύ tip με fixed joint, ο FT αισθητήρας -->
-    <!-- μετρά καθαρά τη δύναμη επαφής με τον τοίχο. -->
+    <!-- Light tip on a fixed joint, so the FT sensor -->
+    <!-- measures the contact force with the wall cleanly. -->
     <link name="ee_tip_link">
       <pose relative_to="end_effector_link">0 0 0 0 0 0</pose>
       <inertial>
@@ -246,7 +246,7 @@
       </axis>
     </joint>
 
-    <!-- DETACHABLE JOINT TRICK - Κλείσιμο βρόχου χωρίς tree loop -->
+    <!-- DETACHABLE JOINT TRICK - Loop closure without a tree loop -->
     <link name="dummy_link">
       <pose relative_to="right_arm">0.12 0 0 0 0 0</pose>
       <inertial>
@@ -274,7 +274,7 @@
       <detach_topic>/detach_loop</detach_topic>
     </plugin>
 
-    <!-- TORQUE CONTROLLERS (για ForceControl.py) -->
+    <!-- TORQUE CONTROLLERS (for ForceControl.py) -->
     <plugin filename="gz-sim-apply-joint-force-system"
             name="gz::sim::systems::ApplyJointForce">
       <joint_name>left_motor_joint</joint_name>
@@ -285,7 +285,7 @@
       <joint_name>right_motor_joint</joint_name>
     </plugin>
 
-    <!-- JointStatePublisher για ανάγνωση γωνιών -->
+    <!-- JointStatePublisher for reading the angles -->
     <plugin filename="gz-sim-joint-state-publisher-system"
             name="gz::sim::systems::JointStatePublisher">
       <joint_name>left_motor_joint</joint_name>

@@ -1,5 +1,5 @@
-// ImpactLogger.cs - ΠΕΙΡΑΜΑ (μόνο στο scratch αντίγραφο): καταγράφει σε ΚΑΘΕ βήμα
-// όλες τις ειδοποιήσεις επαφής του EE (enter/stay/exit) με τη δύναμη impulse/dt.
+// ImpactLogger.cs - EXPERIMENT (only in the scratch copy): logs at EVERY step
+// all contact notifications of the EE (enter/stay/exit) with the force impulse/dt.
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
